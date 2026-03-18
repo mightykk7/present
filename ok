@@ -1,0 +1,491 @@
+using Xunit;
+using OpenQA.Selenium;
+using OpenQA.Selenium.Chrome;
+using System.Threading;
+
+namespace zad5_okfks
+{
+    public class SiteTests : IDisposable
+    {
+        IWebDriver _webDriver = new ChromeDriver();
+        
+        // Константы для авторизации
+        public const string LoginUser = "qwerty";
+        public const string PasswordUser = "123456789";
+        public const string WrongInput = "zxc123";
+        public const int Sleep = 2000;
+
+        // Константы элементов интерфейса
+        public const string AuthUsernameId = "authUsername";
+        public const string AuthPasswordId = "authPassword";
+        public const string AuthSubmitId = "authSubmit";
+        public const string LoginTabId = "loginTab";
+        public const string RegisterTabId = "registerTab";
+        public const string WelcomeTextId = "welcomeText";
+        public const string LogoutBtnId = "logoutBtn";
+        public const string ErrorMessageXPath = "//*[@id=\"message\"]/span";
+        
+        // Элементы рабочей области
+        public const string NewNoteBtnId = "newNoteBtn";
+        public const string NoteTitleInputId = "noteTitle";
+        public const string NoteContentInputId = "noteContent";
+        public const string SaveBtnBtnId = "saveBtn";
+        public const string DeleteBtnId = "deleteBtn";
+        public const string SearchInputId = "searchInput";
+        public const string NoteScopeFilterId = "noteScopeFilter";
+        public const string EditorTitleId = "editorTitle";
+        
+        // XPath для списков
+        public const string NotesListXPath = "//*[@id=\"notesList\"]/li";
+        public const string FirstNoteItemXPath = "//*[@id=\"notesList\"]/li[1]/strong";
+        public const string EmptyListItemXPath = "//*[@id=\"notesList\"]/li";
+        public const string SecondFilterOptionXPath = "//*[@id=\"noteScopeFilter\"]/option[2]";
+        public const string ThirdFilterOptionXPath = "//*[@id=\"noteScopeFilter\"]/option[3]";
+
+        public void Dispose()
+        {
+            _webDriver.Quit();
+            _webDriver.Dispose();
+        }
+        // =================================================================
+        // Блок начального доступа к приложению
+        // =================================================================
+
+        // стартовое состояние приложения
+        [Fact]
+        public void StartPage()
+        {
+            _webDriver.Url = "https://test.webmx.ru";
+            const string Title = "Сервис заметок";
+            Assert.Equal(Title, _webDriver.Title);
+        }
+
+        // доступность основных элементов начального экрана
+        [Fact]
+        public void AccessCheckTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru";
+            const string Title = "Сервис заметок";
+            
+            IWebElement regButton = _webDriver.FindElement(By.Id("registerTab"));
+            Assert.True(regButton.Enabled);
+            
+            regButton.Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement logButton = _webDriver.FindElement(By.Id("loginTab"));
+            Assert.True(logButton.Enabled);
+            
+            logButton.Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement button = _webDriver.FindElement(By.Id("authSubmit"));
+            Assert.True(button.Enabled);
+            Assert.Equal(Title, _webDriver.Title);
+        }
+
+        // переходы между режимами, доступными неавторизованному пользователю
+        [Fact]
+        public void LoginRegistrationTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru";
+            const string Title = "Сервис заметок";
+            
+            IWebElement regButton = _webDriver.FindElement(By.Id("registerTab"));
+            regButton.Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement logButton = _webDriver.FindElement(By.Id("loginTab"));
+            logButton.Click();            Thread.Sleep(Sleep);
+            
+            Assert.Equal(Title, _webDriver.Title);
+        }
+
+        // поведение интерфейса при корректных и некорректных действиях на начальном этапе
+        [Fact]
+        public void EmptyCheck()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            IWebElement Reg = _webDriver.FindElement(By.Id("authSubmit"));
+            Reg.Click();
+            Thread.Sleep(Sleep);
+            IWebElement CheckPage = _webDriver.FindElement(By.Id("loginTab"));
+            Assert.Equal("Вход", CheckPage.Text);
+        }
+
+        [Fact]
+        public void EmptyLoginCheck()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            IWebElement Passw = _webDriver.FindElement(By.Id("authPassword"));
+            Passw.SendKeys(PasswordUser);
+            IWebElement Reg = _webDriver.FindElement(By.Id("authSubmit"));
+            Reg.Click();
+            Thread.Sleep(Sleep);
+            IWebElement CheckPage = _webDriver.FindElement(By.Id("loginTab"));
+            Assert.Equal("Вход", CheckPage.Text);
+        }
+
+        [Fact]
+        public void EmptyPasswordCheck()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            IWebElement Login = _webDriver.FindElement(By.Id("authUsername"));
+            Login.SendKeys(LoginUser);
+            IWebElement Reg = _webDriver.FindElement(By.Id("authSubmit"));
+            Reg.Click();
+            Thread.Sleep(Sleep);
+            IWebElement CheckPage = _webDriver.FindElement(By.Id("loginTab"));
+            Assert.Equal("Вход", CheckPage.Text);
+        }
+
+        // =================================================================
+        // Блок работы с учетной записью пользователя
+        // =================================================================
+
+        // сценарии входа в систему (Позитивный)
+        [Fact]
+        public void SuccessLoginTest()        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            IWebElement Login = _webDriver.FindElement(By.Id(AuthUsernameId));
+            Login.SendKeys(LoginUser);
+            IWebElement Password = _webDriver.FindElement(By.Id(AuthPasswordId));
+            Password.SendKeys(PasswordUser);
+            IWebElement Reg = _webDriver.FindElement(By.Id(AuthSubmitId));
+            Reg.Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement CheckPage = _webDriver.FindElement(By.Id(WelcomeTextId));
+            Assert.Equal("Здравствуйте, qwerty!", CheckPage.Text);
+        }
+
+        // сценарии входа в систему (Негативный - ошибка)
+        [Fact]
+        public void ErrorLoginTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            IWebElement Login = _webDriver.FindElement(By.Id(AuthUsernameId));
+            Login.SendKeys(WrongInput);
+            IWebElement Password = _webDriver.FindElement(By.Id(AuthPasswordId));
+            Password.SendKeys(PasswordUser);
+            IWebElement Reg = _webDriver.FindElement(By.Id(AuthSubmitId));
+            Reg.Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement Error = _webDriver.FindElement(By.XPath(ErrorMessageXPath));
+            Assert.Equal("Неверный логин или пароль.", Error.Text);
+        }
+
+        // сценарии завершения работы пользователя
+        [Fact]
+        public void SuccessLogOutTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement Exit = _webDriver.FindElement(By.Id(LogoutBtnId));
+            Exit.Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement CheckPage = _webDriver.FindElement(By.Id(LoginTabId));
+            Assert.Equal("Вход", CheckPage.Text);
+        }
+
+        // =================================================================        // Блок основной рабочей области приложения
+        // =================================================================
+
+        // отображение основной части интерфейса после выполнения входа
+        [Fact]
+        public void InterfaceAfterLoginTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement CheckPage = _webDriver.FindElement(By.Id(NewNoteBtnId));
+            Assert.Equal("Новая заметка", CheckPage.Text);
+        }
+
+        // доступность базовых элементов управления после входа
+        [Fact]
+        public void ElementsAvailabilityAfterLoginTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            Assert.True(_webDriver.FindElement(By.Id(NewNoteBtnId)).Enabled);
+            Assert.True(_webDriver.FindElement(By.Id(SearchInputId)).Enabled);
+            Assert.True(_webDriver.FindElement(By.Id(NoteScopeFilterId)).Enabled);
+            Assert.True(_webDriver.FindElement(By.Id(LogoutBtnId)).Enabled);
+        }
+
+        // =================================================================
+        // Блок операций с пользовательскими данными
+        // =================================================================
+
+        // создание данных (позитивный сценарий)
+        [Fact]
+        public void AddNoteTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            string noteTitle = "Тестовая заметка";
+            _webDriver.FindElement(By.Id(NoteTitleInputId)).SendKeys(noteTitle);
+            _webDriver.FindElement(By.Id(NoteContentInputId)).SendKeys("Содержимое теста");            _webDriver.FindElement(By.Id(SaveBtnBtnId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement NewNote = _webDriver.FindElement(By.XPath(FirstNoteItemXPath));
+            Assert.Equal(noteTitle, NewNote.Text);
+        }
+
+        // создание данных с пустыми полями (негативный сценарий)
+        [Fact]
+        public void AddEmptyNoteTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            _webDriver.FindElement(By.Id(SaveBtnBtnId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement Error = _webDriver.FindElement(By.XPath(ErrorMessageXPath));
+            Assert.True(Error.Displayed);
+        }
+
+        // редактирование заметки (позитивный сценарий)
+        [Fact]
+        public void EditNoteTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            // Создаём заметку
+            _webDriver.FindElement(By.Id(NoteTitleInputId)).SendKeys("Старое название");
+            _webDriver.FindElement(By.Id(NoteContentInputId)).SendKeys("Старый текст");
+            _webDriver.FindElement(By.Id(SaveBtnBtnId)).Click();
+            Thread.Sleep(Sleep);
+            
+            // Открываем и редактируем
+            _webDriver.FindElement(By.XPath(EmptyListItemXPath)).Click();
+            Thread.Sleep(Sleep);
+            _webDriver.FindElement(By.Id(NoteTitleInputId)).Clear();
+            _webDriver.FindElement(By.Id(NoteTitleInputId)).SendKeys("Новое название");
+            _webDriver.FindElement(By.Id(SaveBtnBtnId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement UpdatedNote = _webDriver.FindElement(By.XPath(FirstNoteItemXPath));
+            Assert.Equal("Новое название", UpdatedNote.Text);        }
+
+        // удаление заметки (негативный - кнопка неактивна без выбора)
+        [Fact]
+        public void DeleteButtonDisabledTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement DelBtn = _webDriver.FindElement(By.Id(DeleteBtnId));
+            Assert.False(DelBtn.Enabled);
+        }
+
+        // =================================================================
+        // Блок поиска, отбора и отображения данных
+        // =================================================================
+
+        // поиск несуществующих данных
+        [Fact]
+        public void SearchNoteTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement Find = _webDriver.FindElement(By.Id(SearchInputId));
+            Find.SendKeys(WrongInput);
+            Thread.Sleep(Sleep);
+            
+            IWebElement List = _webDriver.FindElement(By.XPath(NotesListXPath));
+            Assert.Equal("Нет заметок. Создайте первую заметку.", List.Text);
+        }
+
+        // фильтрация: выбор "Мои" заметки
+        [Fact]
+        public void FilterMyNotesTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            _webDriver.FindElement(By.Id(NoteScopeFilterId)).Click();
+            Thread.Sleep(Sleep);            _webDriver.FindElement(By.XPath(SecondFilterOptionXPath)).Click();
+            Thread.Sleep(Sleep);
+            
+            var selectElement = _webDriver.FindElement(By.Id(NoteScopeFilterId));
+            var selectedOption = selectElement.FindElement(By.CssSelector("option:checked"));
+            Assert.Equal("Мои", selectedOption.Text);
+        }
+
+        // фильтрация: выбор "Общие" заметки
+        [Fact]
+        public void FilterPublicNotesTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            _webDriver.FindElement(By.Id(NoteScopeFilterId)).Click();
+            Thread.Sleep(Sleep);
+            _webDriver.FindElement(By.XPath(ThirdFilterOptionXPath)).Click();
+            Thread.Sleep(Sleep);
+            
+            var selectElement = _webDriver.FindElement(By.Id(NoteScopeFilterId));
+            var selectedOption = selectElement.FindElement(By.CssSelector("option:checked"));
+            Assert.Equal("Общие", selectedOption.Text);
+        }
+
+        // выбор заметки из списка для просмотра/редактирования
+        [Fact]
+        public void SelectNoteFromListTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            // Создаём заметку для выбора
+            _webDriver.FindElement(By.Id(NoteTitleInputId)).SendKeys("Заметка для выбора");
+            _webDriver.FindElement(By.Id(NoteContentInputId)).SendKeys("Текст");
+            _webDriver.FindElement(By.Id(SaveBtnBtnId)).Click();
+            Thread.Sleep(Sleep);
+            
+            // Выбираем её
+            _webDriver.FindElement(By.XPath(EmptyListItemXPath)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement input = _webDriver.FindElement(By.Id(NoteTitleInputId));
+            IWebElement Name = _webDriver.FindElement(By.XPath(FirstNoteItemXPath));            Assert.Equal(Name.Text, input.GetAttribute("value"));
+        }
+
+        // =================================================================
+        // Блок пользовательских ограничений и доступов
+        // =================================================================
+
+        // проверка заголовка редактора для личной заметки
+        [Fact]
+        public void EditMyNoteTitleTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            _webDriver.FindElement(By.Id(NoteScopeFilterId)).Click();
+            Thread.Sleep(Sleep);
+            _webDriver.FindElement(By.XPath(SecondFilterOptionXPath)).Click();
+            Thread.Sleep(Sleep);
+            _webDriver.FindElement(By.XPath(EmptyListItemXPath)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement title = _webDriver.FindElement(By.Id(EditorTitleId));
+            Assert.Equal("Редактирование заметки", title.Text);
+        }
+
+        // проверка заголовка редактора для общей заметки
+        [Fact]
+        public void EditPublicNoteTitleTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            _webDriver.FindElement(By.Id(NoteScopeFilterId)).Click();
+            Thread.Sleep(Sleep);
+            _webDriver.FindElement(By.XPath(ThirdFilterOptionXPath)).Click();
+            Thread.Sleep(Sleep);
+            _webDriver.FindElement(By.XPath(EmptyListItemXPath)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement title = _webDriver.FindElement(By.Id(EditorTitleId));
+            Assert.Equal("Совместное редактирование заметки", title.Text);
+        }
+
+        // =================================================================        // Блок сообщений интерфейса и обратной связи
+        // =================================================================
+
+        // сообщение об ошибке при неверном входе
+        [Fact]
+        public void ErrorMessageOnLoginTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(WrongInput);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement Error = _webDriver.FindElement(By.XPath(ErrorMessageXPath));
+            Assert.Equal("Неверный логин или пароль.", Error.Text);
+            Assert.True(Error.Displayed);
+        }
+
+        // сообщение об успешном входе
+        [Fact]
+        public void SuccessMessageAfterLoginTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement Welcome = _webDriver.FindElement(By.Id(WelcomeTextId));
+            Assert.Equal("Здравствуйте, qwerty!", Welcome.Text);
+            Assert.True(Welcome.Displayed);
+        }
+
+        // сообщение при попытке регистрации существующего пользователя
+        [Fact]
+        public void ErrorRegExistingUserTest()
+        {
+            _webDriver.Url = "https://test.webmx.ru/";
+            _webDriver.FindElement(By.Id(RegisterTabId)).Click();
+            Thread.Sleep(Sleep);
+            
+            _webDriver.FindElement(By.Id(AuthUsernameId)).SendKeys(LoginUser);
+            _webDriver.FindElement(By.Id(AuthPasswordId)).SendKeys(PasswordUser);
+            _webDriver.FindElement(By.Id(AuthSubmitId)).Click();
+            Thread.Sleep(Sleep);
+            
+            IWebElement Error = _webDriver.FindElement(By.XPath(ErrorMessageXPath));
+            Assert.Equal("Пользователь с таким логином уже существует.", Error.Text);
+        }
+    }}
