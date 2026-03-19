@@ -1,0 +1,704 @@
+<Page x:Class="ShopApp.pages.AdminPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:ShopApp.pages"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="AdminPage">
+
+    <Grid>
+        <StackPanel VerticalAlignment="Top">
+            <TextBlock Text="{Binding fio, StringFormat='Добро пожаловать {0}'}" TextAlignment="Center"></TextBlock>
+            <Border Width="100" Height="70" CornerRadius="20" Background="red">
+                <Button Content="Выход" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Exit" Click="Exit_Click"/>
+            </Border>
+            <DataGrid x:Name="UserGrid" AutoGenerateColumns="False" IsReadOnly="True">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ФИО" Binding="{Binding fio}" Width="*"></DataGridTextColumn>
+                    <DataGridTextColumn Header="Логин" Binding="{Binding login}" Width="*"></DataGridTextColumn>
+                    <DataGridTextColumn Header="Пароль" Binding="{Binding password}" Width="*"></DataGridTextColumn>
+                    <DataGridTextColumn Header="Роль" Binding="{Binding adminText}" Width="*"></DataGridTextColumn>
+                    <DataGridTemplateColumn Width="auto">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <Button Content="Сделать админом" Name="BtnEdit" Click="BtnEdit_Click"></Button>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </StackPanel>
+    </Grid>
+</Page>
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace ShopApp.pages
+{
+    /// <summary>
+    /// Логика взаимодействия для AdminPage.xaml
+    /// </summary>
+    public partial class AdminPage : Page
+    {
+        public AdminPage(User selectedUser)
+        {
+            InitializeComponent();
+            DataContext = selectedUser;
+            UserGrid.ItemsSource = DB.Context.User.Where(u => u.id != 1).ToList();
+        }
+        private void BtnEdit_Click(object sender, RoutedEventArgs e)
+        {
+            if (((sender as Button).DataContext as User).admin == true)
+            {
+                ((sender as Button).DataContext as User).admin = false;
+                ((sender as Button).DataContext as User).salesman = true;
+            }
+            else if (((sender as Button).DataContext as User).salesman == true)
+            {
+                ((sender as Button).DataContext as User).salesman = false;
+                ((sender as Button).DataContext as User).admin = false;
+            }
+            else
+            {
+                ((sender as Button).DataContext as User).admin = true;
+                ((sender as Button).DataContext as User).salesman = false;
+            }
+            DB.Context.SaveChanges();
+            UserGrid.ItemsSource = null;
+            UserGrid.ItemsSource = DB.Context.User.Where(u => u.id != 1).ToList();
+        }
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            NavigationService.Navigate(new RegisterPage());
+        }
+    }
+}
+<Page x:Class="ShopApp.pages.AutorisationPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:ShopApp.pages"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="AutorisationPage">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+            <RowDefinition Height="3*"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition/>
+            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition/>
+        </Grid.ColumnDefinitions>
+        <Border Grid.Row="1" Grid.Column="1" BorderThickness="5" BorderBrush="Black" CornerRadius="50">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <TextBlock TextAlignment="Center" VerticalAlignment="Center" FontSize="50">Авторизация</TextBlock>
+                <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="30">Введите Login</TextBlock>
+                    <TextBox Text="{Binding login}" BorderThickness="2" Width="550" Height="50" Padding="10 2" FontSize="30"/>
+                </StackPanel>
+                <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="30">Введите Пароль</TextBlock>
+                    <TextBox Text="{Binding password}" BorderThickness="2" Width="550" Height="50" Padding="10 2" FontSize="30"/>
+                </StackPanel>
+                <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Border Width="300" Height="70" CornerRadius="20" Background="Green" Margin="0 0 10 0">
+                        <Button Content="Войти" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Auto" Click="Auto_Click"/>
+                    </Border>
+                    <Border Width="100" Height="70" CornerRadius="20" Background="Green">
+                        <Button Content="Рег-ия" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Register" Click="Register_Click"/>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace ShopApp.pages
+{
+    /// <summary>
+    /// Логика взаимодействия для AutorisationPage.xaml
+    /// </summary>
+    public partial class AutorisationPage : Page
+    {
+        private User _currentUser = new User();
+        public AutorisationPage()
+        {
+            InitializeComponent();
+            DataContext = _currentUser;
+        }
+
+        private void Auto_Click(object sender, RoutedEventArgs e)
+        {
+            StringBuilder errors = new StringBuilder();
+            if (string.IsNullOrWhiteSpace(_currentUser.login))
+                errors.AppendLine("Укажите Login");
+            if (string.IsNullOrWhiteSpace(_currentUser.password))
+                errors.AppendLine("Укажите Пароль");
+            var existingUser = DB.Context.User.FirstOrDefault(u => u.login == _currentUser.login && u.password == _currentUser.password);
+            if (existingUser == null)
+                errors.AppendLine("Неверный Логин или Пароль");
+            if (errors.Length > 0)
+            {
+                MessageBox.Show(errors.ToString(), "Ошибка");
+                return;
+            }
+            try
+            {
+                if (existingUser.admin == false)
+                    NavigationService.Navigate(new LKPage(selectedUser: existingUser));
+                else if (existingUser.salesman == true)
+                    NavigationService.Navigate(new SalesmanPage(selectedUser:existingUser));
+                else
+                    NavigationService.Navigate(new AdminPage(selectedUser: existingUser));
+                MessageBox.Show("Добро пожаловать " + existingUser.fio, "Сообщение", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message.ToString(), "Сообщение", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void Register_Click(object sender, RoutedEventArgs e)
+        {
+            NavigationService.Navigate(new RegisterPage());
+        }
+    }
+}
+<Page x:Class="ShopApp.pages.LKPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:ShopApp.pages"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="LKPage">
+
+    <Grid>
+        <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{Binding fio, StringFormat='Добро пожаловать! {0}'}" TextAlignment="Center" FontSize="25"></TextBlock>
+            <DataGrid x:Name="DGridOrder" AutoGenerateColumns="False">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Название продукта" Binding="{Binding Product.Name}" Width="*"></DataGridTextColumn>
+                    <DataGridTextColumn Header="Количество" Binding="{Binding Count}" Width="*"></DataGridTextColumn>
+                    <DataGridTextColumn Header="Итого" Binding="{Binding Total}" Width="*"></DataGridTextColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+            <Border Width="100" Height="70" CornerRadius="20" Background="red">
+                <Button Content="Выход" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Exit" Click="Exit_Click"/>
+            </Border>
+            <Border Width="200" Height="70" CornerRadius="20" Background="Green" VerticalAlignment="Center" HorizontalAlignment="Left">
+                <Button Content="Создать заказ" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Create" Click="Create_Click" />
+            </Border>
+        </StackPanel>
+    </Grid>
+</Page>
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace ShopApp.pages
+{
+    /// <summary>
+    /// Логика взаимодействия для LKPage.xaml
+    /// </summary>
+    public partial class LKPage : Page
+    {
+        User _currentUser = new User();
+        Order order = new Order();
+        public LKPage(User selectedUser)
+        {
+            InitializeComponent();
+            if (selectedUser != null)
+            {
+                _currentUser = selectedUser;
+            }
+            DataContext = selectedUser;
+
+            DGridOrder.ItemsSource = DB.Context.Order.Where(u => u.UserId == selectedUser.id).ToList();
+        }
+
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            NavigationService.Navigate(new AutorisationPage());
+        }
+
+        private void Create_Click(object sender, RoutedEventArgs e)
+        {
+            NavigationService.Navigate(new OrderPage(_currentUser));
+        }
+    }
+}
+<Page x:Class="ShopApp.pages.OrderPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:ShopApp.pages"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="OrderPage">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="250"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="25">Название продукта</TextBlock>
+        <TextBlock Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="25">Количество</TextBlock>
+        <TextBlock Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="25">Итого</TextBlock>
+        <ComboBox SelectedItem="{Binding Product, UpdateSourceTrigger=PropertyChanged}" Grid.Column="1" Grid.Row="0" Height="50" Margin="5" x:Name="ComboProducts" DisplayMemberPath="name"></ComboBox>
+        <TextBlock Grid.Row="2" Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" FontSize="25" Text="{Binding Total}"></TextBlock>
+        <TextBox Text="{Binding Count, UpdateSourceTrigger=PropertyChanged}" Grid.Column="1" Grid.Row="1" Height="50" Margin="5"></TextBox>
+        <Button Background="DarkSeaGreen" BorderBrush="AliceBlue" Grid.Column="1" Grid.Row="5" Height="40" Width="150" FontSize="20" Name="SaveBtn" Click="SaveBtn_Click">Заказать</Button>
+    </Grid>
+</Page>
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace ShopApp.pages
+{
+    /// <summary>
+    /// Логика взаимодействия для OrderPage.xaml
+    /// </summary>
+    public partial class OrderPage : Page
+    {
+        Order order = new Order();
+        public OrderPage(User selectedUser)
+        {
+            InitializeComponent();
+            DataContext = order;
+            order.UserId = selectedUser.id;
+            order.Status = "Оформлен";
+            ComboProducts.ItemsSource = DB.Context.Product.ToList();
+        }
+
+        private void SaveBtn_Click(object sender, RoutedEventArgs e)
+        {
+            StringBuilder errors = new StringBuilder();
+            if (order.Product.name == null)
+                errors.AppendLine("Выберите продукт");
+            if (order.Count <=0)
+                errors.AppendLine("Укажите количество");
+            if (errors.Length > 0)
+            {
+                MessageBox.Show(errors.ToString());
+                return;
+            }
+
+
+            if (order.id == 0)
+            {
+                order.id = DB.Context.Order.Max(p => p.id) + 1;
+                DB.Context.Order.Add(order);
+            }
+            try
+            {
+                order.Total = order.Product.price * order.Count;
+                DB.Context.SaveChanges();
+                MessageBox.Show("Заказ создан!");
+                NavigationService.GoBack();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message.ToString());
+            } 
+        }
+    }
+}
+<Page x:Class="ShopApp.pages.RegisterPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:ShopApp.pages"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="RegisterPage">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*"/>
+            <ColumnDefinition Width="2*"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="5*"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <Border Grid.Row="1" Grid.Column="1" BorderThickness="5" BorderBrush="Black" CornerRadius="50">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                    <RowDefinition/>
+                </Grid.RowDefinitions>
+                <TextBlock TextAlignment="Center" VerticalAlignment="Center" FontSize="50">Регистрация</TextBlock>
+                <StackPanel Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="30">Введите ФИО</TextBlock>
+                    <TextBox Text="{Binding fio}" BorderThickness="2" Width="550" Height="50" Padding="10 2" FontSize="30"/>
+                </StackPanel>
+                <StackPanel Grid.Row="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="30">Введите Login</TextBlock>
+                    <TextBox Text="{Binding login}" BorderThickness="2" Width="550" Height="50" Padding="10 2" FontSize="30"/>
+                </StackPanel>
+                <StackPanel Grid.Row="3" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock FontSize="30">Введите Пароль</TextBlock>
+                    <TextBox Text="{Binding password}" BorderThickness="2" Width="550" Height="50" Padding="10 2" FontSize="30"/>
+                </StackPanel>
+                <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Center">
+                    <Border Width="300" Height="70" CornerRadius="20" Background="Green" Margin="0 0 10 0">
+                        <Button Content="Зарегистрироваться" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Register" Click="Register_Click"/>
+                    </Border>
+                    <Border Width="100" Height="70" CornerRadius="20" Background="Green">
+                        <Button Content="Авт-ия" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Auto" Click="Auto_Click"/>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Page>
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace ShopApp.pages
+{
+    /// <summary>
+    /// Логика взаимодействия для RegisterPage.xaml
+    /// </summary>
+    public partial class RegisterPage : Page
+    {
+        private User _currentUser = new User();
+        public RegisterPage()
+        {
+            InitializeComponent();
+            _currentUser.admin = false;
+            _currentUser.salesman = false;
+        }
+
+        private void Register_Click(object sender, RoutedEventArgs e)
+        {
+            StringBuilder errors = new StringBuilder();
+            if (string.IsNullOrWhiteSpace(_currentUser.fio))
+                errors.AppendLine("Укажите ФИО");
+            if (string.IsNullOrWhiteSpace(_currentUser.login))
+                errors.AppendLine("Укажите Login");
+            if (string.IsNullOrWhiteSpace(_currentUser.password))
+                errors.AppendLine("Укажите Пароль");
+            if (errors.Length > 0)
+            {
+                MessageBox.Show(errors.ToString(), "Ошибка");
+                return;
+            }
+            if (_currentUser.id == 0)
+                DB.Context.User.Add(_currentUser);
+            try
+            {
+                DB.Context.SaveChanges();
+                NavigationService.Navigate(new LKPage(_currentUser));
+                MessageBox.Show("Информация сохранена", "Сообщение", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message.ToString(), "Сообщение", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        private void Auto_Click(object sender, RoutedEventArgs e)
+        {
+            NavigationService.Navigate(new AutorisationPage());
+        }
+    }
+}
+<Page x:Class="ShopApp.pages.SalesmanPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+      xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
+      xmlns:local="clr-namespace:ShopApp.pages"
+      mc:Ignorable="d" 
+      d:DesignHeight="450" d:DesignWidth="800"
+      Title="SalesmanPage">
+
+    <Grid>
+        <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="{Binding fio, StringFormat='Добро пожаловать! {0}'}" TextAlignment="Center" FontSize="25"></TextBlock>
+            <Border Width="100" Height="70" CornerRadius="20" Background="red">
+                <Button Content="Выход" Background="Transparent" BorderBrush="Transparent" Foreground="White" FontSize="25" Name="Exit" Click="Exit_Click"/>
+            </Border>
+        </StackPanel>
+    </Grid>
+</Page>
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace ShopApp.pages
+{
+    /// <summary>
+    /// Логика взаимодействия для SalesmanPage.xaml
+    /// </summary>
+    public partial class SalesmanPage : Page
+    {
+        public SalesmanPage(User selectedUser)
+        {
+            InitializeComponent();
+            DataContext = selectedUser;
+        }
+
+        private void Exit_Click(object sender, RoutedEventArgs e)
+        {
+            NavigationService.Navigate(new AutorisationPage());
+        }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace ShopApp
+{
+    internal class DB
+    {
+        public static ShopBase_RatovskyEntities Context = new ShopBase_RatovskyEntities();
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+using ShopApp.pages;
+
+namespace ShopApp
+{
+    /// <summary>
+    /// Логика взаимодействия для MainWindow.xaml
+    /// </summary>
+    public partial class MainWindow : Window
+    {
+        public MainWindow()
+        {
+            InitializeComponent();
+            MainFrame.Navigate(new pages.RegisterPage());
+        }
+    }
+}
+<Window x:Class="ShopApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ShopApp"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="450" Width="800" WindowState="Maximized">
+    <Grid>
+        <Frame Name="MainFrame" NavigationUIVisibility="Hidden"/>
+    </Grid>
+</Window>
+//------------------------------------------------------------------------------
+// <auto-generated>
+//     Этот код создан по шаблону.
+//
+//     Изменения, вносимые в этот файл вручную, могут привести к непредвиденной работе приложения.
+//     Изменения, вносимые в этот файл вручную, будут перезаписаны при повторном создании кода.
+// </auto-generated>
+//------------------------------------------------------------------------------
+
+namespace ShopApp
+{
+    using System;
+    using System.Collections.Generic;
+    
+    public partial class Order
+    {
+        public int id { get; set; }
+        public int UserId { get; set; }
+        public int ProductId { get; set; }
+        public string Status { get; set; }
+        public int Count { get; set; }
+        public Nullable<double> Total { get; set; }
+    
+        public virtual Product Product { get; set; }
+        public virtual User User { get; set; }
+    }
+}
+//------------------------------------------------------------------------------
+// <auto-generated>
+//     Этот код создан по шаблону.
+//
+//     Изменения, вносимые в этот файл вручную, могут привести к непредвиденной работе приложения.
+//     Изменения, вносимые в этот файл вручную, будут перезаписаны при повторном создании кода.
+// </auto-generated>
+//------------------------------------------------------------------------------
+
+namespace ShopApp
+{
+    using System;
+    using System.Collections.Generic;
+    
+    public partial class Product
+    {
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2214:DoNotCallOverridableMethodsInConstructors")]
+        public Product()
+        {
+            this.Order = new HashSet<Order>();
+        }
+    
+        public int id { get; set; }
+        public string name { get; set; }
+        public string category { get; set; }
+        public int count { get; set; }
+        public double price { get; set; }
+    
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
+        public virtual ICollection<Order> Order { get; set; }
+        public virtual Product Product1 { get; set; }
+        public virtual Product Product2 { get; set; }
+    }
+}
+//------------------------------------------------------------------------------
+// <auto-generated>
+//     Этот код создан по шаблону.
+//
+//     Изменения, вносимые в этот файл вручную, могут привести к непредвиденной работе приложения.
+//     Изменения, вносимые в этот файл вручную, будут перезаписаны при повторном создании кода.
+// </auto-generated>
+//------------------------------------------------------------------------------
+
+namespace ShopApp
+{
+    using System;
+    using System.Collections.Generic;
+    
+    public partial class User
+    {
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2214:DoNotCallOverridableMethodsInConstructors")]
+        public User()
+        {
+            this.Order = new HashSet<Order>();
+        }
+    
+        public int id { get; set; }
+        public string fio { get; set; }
+        public string login { get; set; }
+        public string password { get; set; }
+        public Nullable<bool> admin { get; set; }
+        public Nullable<bool> salesman { get; set; }
+    
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
+        public virtual ICollection<Order> Order { get; set; }
+        public string adminText
+        {
+            get
+            {
+                return (admin == true) ? "Администратор" : (salesman == true) ? "Продавец" : "Покупатель";
+            }
+        }
+    }
+}
