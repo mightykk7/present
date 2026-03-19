@@ -218,7 +218,7 @@ namespace ShopApp.pages
             <TextBlock Text="{Binding fio, StringFormat='Добро пожаловать! {0}'}" TextAlignment="Center" FontSize="25"></TextBlock>
             <DataGrid x:Name="DGridOrder" AutoGenerateColumns="False">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Название продукта" Binding="{Binding Product.Name}" Width="*"></DataGridTextColumn>
+                    <DataGridTextColumn Header="Название продукта" Binding="{Binding Product.name}" Width="*"></DataGridTextColumn>
                     <DataGridTextColumn Header="Количество" Binding="{Binding Count}" Width="*"></DataGridTextColumn>
                     <DataGridTextColumn Header="Итого" Binding="{Binding Total}" Width="*"></DataGridTextColumn>
                 </DataGrid.Columns>
