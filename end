@@ -1,6 +1,3 @@
-// zad13-sis.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
-//
-
 #include <iostream>
 #include <Windows.h>
 #include <conio.h>
@@ -19,148 +16,117 @@ struct Bayum {
 struct Player {
     long health = 500000; // здоровье игрока
     int damage = 12000; // урон обычной атакой
-    int specialDamage = 30000; // урон спецприёмом (опционально)
+    int specialDamage = 30000; // урон спецприёмом
     int attackCooldown = 2; // время между обычными атаками (сек)
     int specialCooldown = 5; // время между спецатаками (сек)
-    int defense = 20; // защита игрока (уменьшает урон босса)
+    int defense = 20; // защита игрока
     int dodgeChance = 15; // шанс уклониться от атаки босса (%)
-    char name[64]; // имя игрока (для логов)
+    char name[64]; // имя игрока
 };
 
 CRITICAL_SECTION battle_cs;
 CRITICAL_SECTION print_cs;
 CRITICAL_SECTION timer_cs;
 
-
 HANDLE hGameEnd;
 HANDLE hBossSpecial;
 
-//Состояние игры
 Bayum boss;
 Player players[MAX_PLAYERS];
 int numPlayers = 0;
 int alivePlayers = 0;
 volatile bool bossAlive = true;
-int lastAttackerId = -1; 
+int lastAttackerId = -1;
 
 volatile long bossTimerAttack = 0;
 volatile long bossTimerSpecial = 0;
 volatile long playerTimers[MAX_PLAYERS] = { 0 };
 
-// Дополнительные поля
-long playerTotalDamage[MAX_PLAYERS] = { 0 }; //Общий дамаг
-bool playerAlive[MAX_PLAYERS] = { true }; //изначально все игроки живы
-bool playerHasAttacked[MAX_PLAYERS] = { false };  // кто уже атаковал в этом тике
+long playerTotalDamage[MAX_PLAYERS] = { 0 };
+bool playerAlive[MAX_PLAYERS] = { true };
 
-
-//Рассчёт урона игрока
 double CalcPlayerDamage(int baseDamage, int resist) {
     return baseDamage * (100.0 - resist) / 100.0;
 }
-//Рассчёт урона босса
 double CalcBossDamage(int baseDamage, int defense) {
     return baseDamage * (100.0 - defense) / 100.0;
 }
-//Рассчёт специально атаки босса
+
 double CalcSpecialDamage(int base, int playerCount) {
-    if (playerCount <= 1)
-        return base;
+    if (playerCount <= 1) return base;
     return base * (1.0 - 0.05 * (playerCount - 1));
 }
 
-void Print(const char* msg) {
+void PrintLog(const char* msg) {
     EnterCriticalSection(&print_cs);
     std::cout << msg << std::endl;
     LeaveCriticalSection(&print_cs);
 }
+
 void PrintPlayerHP(int id) {
     EnterCriticalSection(&print_cs);
     if (playerAlive[id])
-        std::cout << "[HP] " << players[id].name << ":" << players[id].health << std::endl;
+        std::cout << "[PLAYER] " << players[id].name << " HP: " << players[id].health << std::endl;
     else
-        std::cout << "[DEAD] " << players[id].name << std::endl;
+        std::cout << "[PLAYER] " << players[id].name << " - DEAD" << std::endl;
     LeaveCriticalSection(&print_cs);
-}
-void PrintBossHp() {
-    EnterCriticalSection(&print_cs);
-    std::cout << "[BOSS] HP:" << boss.health << std::endl;
-    LeaveCriticalSection(&print_cs);
-}
-void PrintFinalStats() {
-    Print("\n=== СТАТИСТИКА БОЯ ===");
-
-    // Сортировка игроков по урону (пузырьком)
-    int sortedIdx[MAX_PLAYERS];
-    for (int i = 0; i < numPlayers; i++) sortedIdx[i] = i;
-
-    for (int i = 0; i < numPlayers - 1; i++) {
-        for (int j = 0; j < numPlayers - i - 1; j++) {
-            if (playerTotalDamage[sortedIdx[j]] < playerTotalDamage[sortedIdx[j + 1]]) {
-                int tmp = sortedIdx[j];
-                sortedIdx[j] = sortedIdx[j + 1];
-                sortedIdx[j + 1] = tmp;
-            }
-        }
-    }
-
-    Print("\n ТОП-3 по урону:");
-    int limit = (numPlayers < 3) ? numPlayers : 3;
-    for (int i = 0; i < limit; i++) {
-        int idx = sortedIdx[i];
-        EnterCriticalSection(&print_cs);
-        std::cout << (i + 1) << ". " << players[idx].name
-            << " — " << playerTotalDamage[idx] << " урона" << std::endl;
-        LeaveCriticalSection(&print_cs);
-    }
 }
 
 void PlayerAttack(int playerId, bool isSpecial) {
     Player& p = players[playerId];
+    
+    long hpSnapshot = 0;
+    double effectiveDmg = 0;
+    bool bossDied = false;
 
     EnterCriticalSection(&battle_cs);
-    if (!playerAlive[playerId] || !bossAlive)
-    {
+    if (!playerAlive[playerId] || !bossAlive) {
         LeaveCriticalSection(&battle_cs);
         return;
     }
-    int baseDmg = isSpecial ? p.specialDamage : p.damage;
-    double effectiveDmg = CalcPlayerDamage(baseDmg, boss.resist);
     
-    boss.health -= effectiveDmg;
-    playerTotalDamage[playerId] += effectiveDmg;
+    int baseDmg = isSpecial ? p.specialDamage : p.damage;
+    effectiveDmg = CalcPlayerDamage(baseDmg, boss.resist);
+    
+    boss.health -= (long)effectiveDmg;
+    playerTotalDamage[playerId] += (long)effectiveDmg;
     lastAttackerId = playerId;
-
+    
+    hpSnapshot = boss.health;
+    
     if (boss.health <= 0) {
         boss.health = 0;
-        bossAlive = false;
+        bossAlive = false;        bossDied = true;
     }
     LeaveCriticalSection(&battle_cs);
 
     EnterCriticalSection(&print_cs);
-    if (isSpecial)
-        std::cout << "[SPECATK] " << p.name << " использует спецприём! урон:" << effectiveDmg << "| Boss HP:" << boss.health << std::endl;
-    else
-        std::cout << "[ATK] " << p.name << " Атакует! урон:" << effectiveDmg << "| Boss HP:" << boss.health << std::endl;
+    if (isSpecial) {
+        std::cout << "[ATTACK] " << p.name << " использует СПЕЦ-ПРИЁМ! Нанесено " 
+                  << effectiveDmg << " урона | Boss HP: " << hpSnapshot << std::endl;
+    } else {
+        std::cout << "[ATTACK] " << p.name << " атакует Bayum. Нанесено " 
+                  << effectiveDmg << " урона | Boss HP: " << hpSnapshot << std::endl;
+    }
     LeaveCriticalSection(&print_cs);
 
-    if (!bossAlive) {
-        Print("\n === Босс Побежден ===");
+    if (bossDied) {
+        PrintLog("\n*** БОСС ПОБЕЖДЁН! ***");
         SetEvent(hGameEnd);
     }
 }
-void BossAttack() {
+
+void BossAttackSingle() {
     EnterCriticalSection(&battle_cs);
     if (!bossAlive) {
         LeaveCriticalSection(&battle_cs);
         return;
     }
-
-    // Выбор цели: сначала последний атаковавший, потом любой живой
+    
     int targetId = -1;
     if (lastAttackerId >= 0 && lastAttackerId < numPlayers && playerAlive[lastAttackerId]) {
         targetId = lastAttackerId;
-    }
-    else {
+    } else {
         for (int i = 0; i < numPlayers; i++) {
             if (playerAlive[i]) {
                 targetId = i;
@@ -168,132 +134,131 @@ void BossAttack() {
             }
         }
     }
-
+    
     if (targetId == -1) {
         LeaveCriticalSection(&battle_cs);
         return;
     }
-
+    
     Player& target = players[targetId];
-
-    // Проверка уклонения
+    
     if (rand() % 100 < target.dodgeChance) {
         LeaveCriticalSection(&battle_cs);
         EnterCriticalSection(&print_cs);
-        std::cout << "[DODGE] " << target.name << " уклонился от атаки!" << std::endl;
-        LeaveCriticalSection(&print_cs);
+        std::cout << "[DODGE] " << target.name << " уклонился от атаки Bayum!" << std::endl;        LeaveCriticalSection(&print_cs);
         return;
     }
-
-    // Нанесение урона
+    
     double dmg = CalcBossDamage(boss.damage, target.defense);
     target.health -= (long)dmg;
-
+    
+    long targetHpSnapshot = target.health;
+    bool playerDied = false;
+    
     if (target.health <= 0) {
         target.health = 0;
         playerAlive[targetId] = false;
         alivePlayers--;
+        playerDied = true;
     }
     LeaveCriticalSection(&battle_cs);
-
-    // Логирование
-    EnterCriticalSection(&print_cs);    std::cout << "[BOSS] Bayum атакует " << target.name << " на " << dmg << " | HP: " << target.health << std::endl;
-    if (!playerAlive[targetId]) std::cout << " ПОГИБ";
+    
+    EnterCriticalSection(&print_cs);
+    std::cout << "[BOSS ATK] Bayum атакует " << target.name << " на " << dmg
+        << " | " << target.name << " HP: " << targetHpSnapshot;
+    if (playerDied) std::cout << " ***ПОГИБ***";
     std::cout << std::endl;
     LeaveCriticalSection(&print_cs);
-
-    // Проверка: все ли игроки мертвы?
+    
     if (alivePlayers <= 0) {
-        Print("\n=== ВСЕ ИГРОКИ ПОГИБЛИ! ПОБЕДА БОССА! ===");
+        PrintLog("\n*** ВСЕ ИГРОКИ ПОГИБЛИ! ПОБЕДА БОССА! ***");
         SetEvent(hGameEnd);
     }
 }
-void BossSpecialAttack() {
+
+void BossAttackSpecial() {
     EnterCriticalSection(&battle_cs);
     if (!bossAlive) {
         LeaveCriticalSection(&battle_cs);
         return;
     }
-
-    // Расчёт урона с уменьшением за количество игроков
+    
     double mult = 1.0 - 0.05 * (numPlayers - 1);
     int baseDmg = (int)(boss.specialDamage * mult);
-
+    
     LeaveCriticalSection(&battle_cs);
-
-    // Логирование начала спецатаки
+    
     EnterCriticalSection(&print_cs);
-    std::cout << "\n [BOSS SPECATK] Bayum использует МАССОВУЮ АТАКУ! (урон: "
-        << baseDmg << ") \n" << std::endl;
+    std::cout << "\n[BOSS SPECIAL ATK] *** Bayum использует МАССОВУЮ АТАКУ! *** (урон: " 
+              << baseDmg << ")\n" << std::endl;
     LeaveCriticalSection(&print_cs);
-
-    // "Будим" игроков событием
+    
     PulseEvent(hBossSpecial);
-
-    // Атака по всем живым игрокам
-    EnterCriticalSection(&battle_cs);
+        EnterCriticalSection(&battle_cs);
     for (int i = 0; i < numPlayers; i++) {
         if (!playerAlive[i]) continue;
-
+        
         Player& p = players[i];
-
-        // Проверка уклонения
+        
         if (rand() % 100 < p.dodgeChance) {
             LeaveCriticalSection(&battle_cs);
             EnterCriticalSection(&print_cs);
             std::cout << "[DODGE] " << p.name << " уклонился от массовой атаки!" << std::endl;
             LeaveCriticalSection(&print_cs);
-            EnterCriticalSection(&battle_cs);            
+            EnterCriticalSection(&battle_cs);
             continue;
         }
-
-        // Нанесение урона
+        
         double dmg = CalcBossDamage(baseDmg, p.defense);
         p.health -= (long)dmg;
-
+        
+        long playerHpSnapshot = p.health;
+        bool playerDied = false;
+        
         if (p.health <= 0) {
             p.health = 0;
             playerAlive[i] = false;
             alivePlayers--;
+            playerDied = true;
         }
-
-        // Логирование для каждого игрока
+        
+        LeaveCriticalSection(&battle_cs);
+        
         EnterCriticalSection(&print_cs);
-        std::cout << "[SPECATK] " << p.name << " получает " << dmg
-            << " | HP: " << p.health;
-        if (!playerAlive[i]) std::cout << " ПОГИБ";
+        std::cout << "[BOSS SPECIAL ATK] " << p.name << " получает " << dmg
+            << " | " << p.name << " HP: " << playerHpSnapshot;
+        if (playerDied) std::cout << " ***ПОГИБ***";
         std::cout << std::endl;
         LeaveCriticalSection(&print_cs);
+        
+        EnterCriticalSection(&battle_cs);
     }
-
+    
     if (alivePlayers <= 0) {
-        Print("\n=== ВСЕ ИГРОКИ ПОГИБЛИ! ПОБЕДА БОССА! ===");
+        PrintLog("\n*** ВСЕ ИГРОКИ ПОГИБЛИ! ПОБЕДА БОССА! ***");
         SetEvent(hGameEnd);
     }
     LeaveCriticalSection(&battle_cs);
 }
+
 DWORD WINAPI PlayerThread(LPVOID param) {
     int playerId = *(int*)param;
-
-    while (bossAlive && alivePlayers > 0) {
-        // Проверка окончания боя
+        while (bossAlive && alivePlayers > 0) {
         if (WaitForSingleObject(hGameEnd, 10) == WAIT_OBJECT_0) break;
-
-        // Проверка: жив ли игрок
+        
         if (!playerAlive[playerId]) {
             Sleep(100);
             continue;
         }
-
+        
         EnterCriticalSection(&timer_cs);
         long curTimer = playerTimers[playerId];
         LeaveCriticalSection(&timer_cs);
-
+        
         Player& p = players[playerId];
         bool canAttack = false;
         bool isSpecial = false;
-
-        // Приоритет спецатаке
+        
         if (curTimer >= p.specialCooldown) {
             canAttack = true;
             isSpecial = true;
@@ -302,55 +267,54 @@ DWORD WINAPI PlayerThread(LPVOID param) {
             canAttack = true;
             isSpecial = false;
         }
-
+        
         if (canAttack) {
             PlayerAttack(playerId, isSpecial);
-
-            // Сброс таймера после атаки
+            
             EnterCriticalSection(&timer_cs);
             playerTimers[playerId] = 0;
             LeaveCriticalSection(&timer_cs);
-
-            Sleep(100); // Небольшая пауза между атаками
+            
+            Sleep(100);
         }
-
-        Sleep(50); // Чтобы не грузить процессор
+        
+        Sleep(50);
     }
     return 0;
 }
+
 DWORD WINAPI BossThread(LPVOID) {
     while (bossAlive && alivePlayers > 0) {
         if (WaitForSingleObject(hGameEnd, 10) == WAIT_OBJECT_0) break;
-
+        
         EnterCriticalSection(&timer_cs);
         long curAttack = bossTimerAttack;
         long curSpecial = bossTimerSpecial;
         LeaveCriticalSection(&timer_cs);
-
-        // Приоритет спецатаке
-        if (curSpecial >= boss.specialCooldown) {
-            BossSpecialAttack();
+        
+        if (curSpecial >= boss.specialCooldown) {            BossAttackSpecial();
             EnterCriticalSection(&timer_cs);
             bossTimerSpecial = 0;
             LeaveCriticalSection(&timer_cs);
         }
         else if (curAttack >= boss.attackCooldown) {
-            BossAttack();
+            BossAttackSingle();
             EnterCriticalSection(&timer_cs);
             bossTimerAttack = 0;
             LeaveCriticalSection(&timer_cs);
         }
-
+        
         Sleep(100);
     }
     return 0;
 }
+
 DWORD WINAPI TimerThread(LPVOID) {
     while (bossAlive && alivePlayers > 0) {
         if (WaitForSingleObject(hGameEnd, 1000) == WAIT_OBJECT_0) break;
-
-        Sleep(1000); // Ждём 1 секунду
-
+        
+        Sleep(1000);
+        
         EnterCriticalSection(&timer_cs);
         bossTimerAttack++;
         bossTimerSpecial++;
@@ -361,100 +325,110 @@ DWORD WINAPI TimerThread(LPVOID) {
     }
     return 0;
 }
-int main()
-{
+
+void PrintFinalStats() {
+    PrintLog("\n=== СТАТИСТИКА БОЯ ===");
+    
+    int sortedIdx[MAX_PLAYERS];
+    for (int i = 0; i < numPlayers; i++) sortedIdx[i] = i;
+    
+    for (int i = 0; i < numPlayers - 1; i++) {
+        for (int j = 0; j < numPlayers - i - 1; j++) {
+            if (playerTotalDamage[sortedIdx[j]] < playerTotalDamage[sortedIdx[j + 1]]) {
+                int tmp = sortedIdx[j];
+                sortedIdx[j] = sortedIdx[j + 1];
+                sortedIdx[j + 1] = tmp;
+            }
+        }
+    }
+        PrintLog("\nТоп-3 игрока по урону:");
+    int limit = (numPlayers < 3) ? numPlayers : 3;
+    for (int i = 0; i < limit; i++) {
+        int idx = sortedIdx[i];
+        EnterCriticalSection(&print_cs);
+        std::cout << (i + 1) << ". " << players[idx].name 
+                  << " - " << playerTotalDamage[idx] << " урона" << std::endl;
+        LeaveCriticalSection(&print_cs);
+    }
+}
+
+int main() {
     setlocale(0, "rus");
     srand(GetTickCount64());
 
-    // Инициализация синхронизации
     InitializeCriticalSection(&battle_cs);
     InitializeCriticalSection(&print_cs);
     InitializeCriticalSection(&timer_cs);
 
-    hGameEnd = CreateEvent(NULL, TRUE, FALSE, NULL);        // Manual-reset event
-    hBossSpecial = CreateEvent(NULL, FALSE, FALSE, NULL);   // Auto-reset event
+    hGameEnd = CreateEvent(NULL, TRUE, FALSE, NULL);
+    hBossSpecial = CreateEvent(NULL, FALSE, FALSE, NULL);
 
-    // === Ввод количества игроков ===
     int num = 0;
     while (num < 1 || num > MAX_PLAYERS) {
-        std::cout << "Сколько игроков в рейде? (1-" << MAX_PLAYERS << "): ";
+        std::cout << "Сколько игроков участвует в рейде? (1-10): ";
         std::cin >> num;
     }
     numPlayers = num;
     alivePlayers = num;
 
-    // === Ввод имён и инициализация игроков ===
     for (int i = 0; i < num; i++) {
-        std::cout << "Имя игрока №" << (i + 1) << ": ";
+        std::cout << "Введите имя игрока №" << (i + 1) << ": ";
         std::cin >> players[i].name;
         playerAlive[i] = true;
         players[i].health = 500000;
-        players[i].damage = 10000 + rand() % 10000;  // Рандомный урон для разнообразия
+        players[i].damage = 10000 + rand() % 10000;
         players[i].specialDamage = (int)(players[i].damage * 2.5);
         playerTotalDamage[i] = 0;
     }
 
-    // === Инициализация босса ===
     boss.health = 9000000000;
     bossAlive = true;
     lastAttackerId = -1;
-
-    // Сброс таймеров
+    
     bossTimerAttack = 0;
     bossTimerSpecial = 0;
     for (int i = 0; i < MAX_PLAYERS; i++) playerTimers[i] = 0;
 
-    // === Старт боя ===
-    std::cout << "\n===  НАЧАЛО РЕЙДА НА BAYUM  ===\n";
-    PrintBossHp();
-    for (int i = 0; i < num; i++) PrintPlayerHP(i);
-
-    std::cout << "\nНажмите любую клавишу для начала битвы...\n";
+    std::cout << "\n=== НАЧАЛО РЕЙДА НА BAYUM ===\n";
+    std::cout << "[BOSS] Bayum HP: " << boss.health << std::endl;    for (int i = 0; i < num; i++) PrintPlayerHP(i);
+    
+    std::cout << "\nНажмите любую клавишу для старта битвы...\n";
     _getch();
 
-    // === Запуск потоков ===
     HANDLE hBoss = CreateThread(NULL, 0, BossThread, NULL, 0, NULL);
     HANDLE hTimer = CreateThread(NULL, 0, TimerThread, NULL, 0, NULL);
     HANDLE hPlayers[MAX_PLAYERS];
-    int playerIds[MAX_PLAYERS];  // Массив для ID, чтобы избежать проблем с памятью
-
+    int playerIds[MAX_PLAYERS];
+    
     for (int i = 0; i < num; i++) {
-        playerIds[i] = i;  // Сохраняем ID в отдельном массиве
+        playerIds[i] = i;
         hPlayers[i] = CreateThread(NULL, 0, PlayerThread, &playerIds[i], 0, NULL);
     }
 
-    // === Ожидание окончания боя ===
     WaitForSingleObject(hGameEnd, INFINITE);
 
-    // === Завершение потоков ===
     WaitForSingleObject(hBoss, 2000);
     WaitForSingleObject(hTimer, 2000);
     for (int i = 0; i < num; i++) {
         WaitForSingleObject(hPlayers[i], 2000);
     }
 
-    // === Финальный результат ===
-    if (bossAlive)
-        Print("\n ПОБЕДА БОССА! ");
+    if (!bossAlive && alivePlayers > 0)
+        PrintLog("\n*** ПОБЕДА КОМАНДЫ! ***");
     else
-        Print("\n ПОБЕДА КОМАНДЫ! ");
+        PrintLog("\n*** ПОБЕДА БОССА! ***");
 
-    // === Статистика ===
     PrintFinalStats();
 
-    // === Очистка ресурсов ===
     for (int i = 0; i < num; i++) CloseHandle(hPlayers[i]);
     CloseHandle(hBoss);
     CloseHandle(hTimer);
     CloseHandle(hGameEnd);
     CloseHandle(hBossSpecial);
-
+    
     DeleteCriticalSection(&battle_cs);
     DeleteCriticalSection(&print_cs);
     DeleteCriticalSection(&timer_cs);
 
-    std::cout << "\nНажмите любую клавишу для выхода...\n";
-    _getch();
     return 0;
 }
-
