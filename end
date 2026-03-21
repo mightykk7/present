@@ -1,6 +1,8 @@
+```cpp
 #include <iostream>
 #include <Windows.h>
 #include <conio.h>
+#include <cstdio>
 
 const int MAX_PLAYERS = 10;
 
@@ -48,6 +50,7 @@ bool playerAlive[MAX_PLAYERS] = { true };
 double CalcPlayerDamage(int baseDamage, int resist) {
     return baseDamage * (100.0 - resist) / 100.0;
 }
+
 double CalcBossDamage(int baseDamage, int defense) {
     return baseDamage * (100.0 - defense) / 100.0;
 }
@@ -96,7 +99,8 @@ void PlayerAttack(int playerId, bool isSpecial) {
     
     boss.health -= (long)effectiveDmg;
     playerTotalDamage[playerId] += (long)effectiveDmg;
-    lastAttackerId = playerId;    
+    lastAttackerId = playerId;
+    
     hpSnapshot = boss.health;
     
     if (boss.health <= 0) {
@@ -145,7 +149,8 @@ void BossAttackSingle() {
         LeaveCriticalSection(&battle_cs);
         return;
     }
-        Player& target = players[targetId];
+    
+    Player& target = players[targetId];
     
     if (rand() % 100 < target.dodgeChance) {
         LeaveCriticalSection(&battle_cs);
@@ -194,7 +199,8 @@ void BossAttackSpecial() {
     
     LeaveCriticalSection(&battle_cs);
     
-    EnterCriticalSection(&print_cs);    std::cout << "\n[BOSS SPECIAL ATK] *** Bayum использует МАССОВУЮ АТАКУ! *** (урон: " 
+    EnterCriticalSection(&print_cs);
+    std::cout << "\n[BOSS SPECIAL ATK] *** Bayum использует МАССОВУЮ АТАКУ! *** (урон: " 
               << baseDmg << ")\n" << std::endl;
     LeaveCriticalSection(&print_cs);
     
@@ -243,7 +249,8 @@ void BossAttackSpecial() {
     if (alivePlayers <= 0) {
         PrintLog("\n*** ВСЕ ИГРОКИ ПОГИБЛИ! ПОБЕДА БОССА! ***");
         SetEvent(hGameEnd);
-    }    LeaveCriticalSection(&battle_cs);
+    }
+    LeaveCriticalSection(&battle_cs);
 }
 
 DWORD WINAPI PlayerThread(LPVOID param) {
@@ -292,7 +299,8 @@ DWORD WINAPI PlayerThread(LPVOID param) {
 DWORD WINAPI BossThread(LPVOID) {
     while (bossAlive && alivePlayers > 0) {
         if (WaitForSingleObject(hGameEnd, 10) == WAIT_OBJECT_0) break;
-                EnterCriticalSection(&timer_cs);
+        
+        EnterCriticalSection(&timer_cs);
         long curAttack = bossTimerAttack;
         long curSpecial = bossTimerSpecial;
         LeaveCriticalSection(&timer_cs);
@@ -329,7 +337,6 @@ DWORD WINAPI TimerThread(LPVOID) {
         }
         LeaveCriticalSection(&timer_cs);
         
-        // После каждой секунды выводим разделитель
         PrintSeparator();
     }
     return 0;
@@ -341,7 +348,8 @@ void PrintFinalStats() {
     int sortedIdx[MAX_PLAYERS];
     for (int i = 0; i < numPlayers; i++) sortedIdx[i] = i;
     
-    for (int i = 0; i < numPlayers - 1; i++) {        for (int j = 0; j < numPlayers - i - 1; j++) {
+    for (int i = 0; i < numPlayers - 1; i++) {
+        for (int j = 0; j < numPlayers - i - 1; j++) {
             if (playerTotalDamage[sortedIdx[j]] < playerTotalDamage[sortedIdx[j + 1]]) {
                 int tmp = sortedIdx[j];
                 sortedIdx[j] = sortedIdx[j + 1];
@@ -381,8 +389,7 @@ int main() {
     alivePlayers = num;
 
     for (int i = 0; i < num; i++) {
-        std::cout << "Введите имя игрока №" << (i + 1) << ": ";
-        std::cin >> players[i].name;
+        sprintf_s(players[i].name, sizeof(players[i].name), "Игрок %d", i + 1);
         playerAlive[i] = true;
         players[i].health = 500000;
         players[i].damage = 10000 + rand() % 10000;
@@ -390,7 +397,8 @@ int main() {
         playerTotalDamage[i] = 0;
     }
 
-    boss.health = 9000000000;    bossAlive = true;
+    boss.health = 9000000000;
+    bossAlive = true;
     lastAttackerId = -1;
     
     bossTimerAttack = 0;
@@ -439,8 +447,10 @@ int main() {
     CloseHandle(hGameEnd);
     CloseHandle(hBossSpecial);
     
-    DeleteCriticalSection(&battle_cs);    DeleteCriticalSection(&print_cs);
+    DeleteCriticalSection(&battle_cs);
+    DeleteCriticalSection(&print_cs);
     DeleteCriticalSection(&timer_cs);
 
     return 0;
 }
+```
