@@ -36,9 +36,48 @@ HANDLE hSemaphore;
 ClientRecord clients[MAX_CLIENTS];
 HANDLE hThreads[MAX_CLIENTS];
 DWORD WINAPI ClientThread(LPVOID _client) {
-    srand(GetTickCount64());
+    srand(GetTickCount());
+
     ClientRecord* client = (ClientRecord*)_client;
+
     client->arriveTick = GetTickCount();
+
+    EnterCriticalSection(&cs);
+    club.clients[client->threadId - 1] = client;
+    LeaveCriticalSection(&cs);
+
+    HANDLE hSemaphore = OpenSemaphore(SEMAPHORE_ALL_ACCESS, FALSE, L"ClubSemaphore");
+    if (hSemaphore == NULL) {
+        std::cerr << "Ошибка открытия семафора в потоке " << client->threadId << std::endl;
+        return GetLastError();
+    }
+
+    DWORD waitResult = WaitForSingleObject(hSemaphore, 3000);
+
+    if (waitResult == WAIT_OBJECT_0) {
+        client->startTick = GetTickCount();
+
+        int workTime = (rand() % (5000 - 2000+ 1)) + 2000;
+
+        Sleep(workTime);
+
+        ReleaseSemaphore(hSemaphore, 1, NULL);
+
+        client->endTick = GetTickCount();
+
+        EnterCriticalSection(&cs);
+        client->served = TRUE;
+        client->timeout = FALSE;
+        LeaveCriticalSection(&cs);
+    }
+    else {
+        EnterCriticalSection(&cs);
+        client->served = FALSE;
+        client->timeout = TRUE;
+        LeaveCriticalSection(&cs);
+    }
+
+    CloseHandle(hSemaphore);
     return 0;
 }
 DWORD WINAPI ObserverThread(LPVOID _client) {
@@ -53,7 +92,6 @@ DWORD WINAPI ObserverThread(LPVOID _client) {
             << " | Таймауты: " << club.timeoutCount << "   " << std::flush;
         LeaveCriticalSection(&cs);
     }
-    return 0;
     return 0;
 }
 
