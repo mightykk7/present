@@ -184,7 +184,14 @@ public partial class Tag
       Title="AddProductPage">
 
     <Grid>
-        <StackPanel>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="50"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <StackPanel Grid.ColumnSpan="3" Grid.Row="0">
+            <TextBlock Text="Добавление атрибутов" HorizontalAlignment="Center" Margin="0,0,0,10" FontSize="24"/>
+        </StackPanel>
+        <StackPanel Grid.Row="1">
             <StackPanel Margin="0,0,0,6">
                 <Label Padding="0,0,0,2">Название</Label>
                 <TextBox x:Name="NameTextBox" Text="{Binding Name, UpdateSourceTrigger=PropertyChanged}"/>
@@ -236,7 +243,6 @@ public partial class Tag
             </StackPanel>
             <StackPanel Margin="0,0,0,10">
                 <Label FontWeight="Bold" Padding="0,0,0,2">Теги</Label>
-                <!-- Фиксированная высота — список тегов не растягивает всё окно -->
                 <ListBox x:Name="TagsListBox" 
                  DisplayMemberPath="Name"
                  SelectionMode="Multiple"
@@ -254,64 +260,49 @@ public partial class Tag
     </Grid>
 </Page>
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using System.Windows.Threading;
+
+using Microsoft.EntityFrameworkCore;
 
 using zad15_trpo.Models;
-
 using zad15_trpo.Service;
 
 namespace zad15_trpo.Pages
 {
-    /// <summary>
-    /// Логика взаимодействия для AddProductPage.xaml
-    /// </summary>
     public partial class AddProductPage : Page
     {
         private readonly Ratovsky15Context _db = DBService.Instance.Context;
-        public Product CurrentProduct { get; set; } = new()
-        {
-            CreatedAt = DateOnly.FromDateTime(DateTime.Now),
-            Rating = 0,
-            Stock = 0,
-            Price = 0
-        };
+        public Product CurrentProduct { get; set; }
 
         public AddProductPage()
         {
             InitializeComponent();
+            CurrentProduct = new Product
+            {
+                CreatedAt = DateOnly.FromDateTime(DateTime.Now),
+                Rating = 0,
+                Stock = 0,
+                Price = 0
+            };
             DataContext = CurrentProduct;
             LoadComboBoxes();
         }
+
         public AddProductPage(Product productToEdit)
         {
             InitializeComponent();
-            CurrentProduct = productToEdit;
+            CurrentProduct = _db.Products.Include(p => p.Tags).FirstOrDefault(p => p.Id == productToEdit.Id) ?? productToEdit;
             DataContext = CurrentProduct;
             LoadComboBoxes();
         }
 
         private void LoadComboBoxes()
         {
-            // Загружаем категории
-            var categories = _db.Categories.OrderBy(c => c.Name).ToList();
-            CategoryComboBox.ItemsSource = categories;
+            CategoryComboBox.ItemsSource = _db.Categories.OrderBy(c => c.Name).ToList();
+            BrandComboBox.ItemsSource = _db.Brands.OrderBy(b => b.Name).ToList();
 
-            // Загружаем бренды
-            var brands = _db.Brands.OrderBy(b => b.Name).ToList();
-            BrandComboBox.ItemsSource = brands;
             if (CurrentProduct.Id != 0)
             {
                 CategoryComboBox.SelectedValue = CurrentProduct.CategoryId;
@@ -322,93 +313,35 @@ namespace zad15_trpo.Pages
             StockTextBox.Text = CurrentProduct.Stock.ToString();
             RatingTextBox.Text = CurrentProduct.Rating.ToString();
 
-            // Загружаем теги
             var tags = _db.Tags.OrderBy(t => t.Name).ToList();
             TagsListBox.ItemsSource = tags;
 
-            //  редактируем - выбираем привязанные теги
-            if (CurrentProduct.Id != 0)
+            if (CurrentProduct.Id != 0 && CurrentProduct.Tags != null)
             {
-                var productTagIds = _db.Tags
-                    .Where(pt => pt.ProductId == CurrentProduct.Id)
-                    .Select(pt => pt.TagId)
-                    .ToList();
-
-                // Очищаем текущий выбор и выбираем нужные
-                TagsListBox.SelectedItems.Clear();
                 foreach (var tag in tags)
                 {
-                    if (productTagIds.Contains(tag.Id))
-                    {
+                    if (CurrentProduct.Tags.Any(t => t.Id == tag.Id))
                         TagsListBox.SelectedItems.Add(tag);
-                    }
                 }
             }
         }
 
         private void Save_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(CurrentProduct.Name))
-            {
-                MessageBox.Show("Введите название товара", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                NameTextBox.Focus();
-                return;
-            }
-            if (string.IsNullOrWhiteSpace(CurrentProduct.Description))
-            {
-                MessageBox.Show("Введите описание товара", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                DescriptionTextBox.Focus();
-                return;
-            }
-            string input = PriceTextBox.Text.Replace('.', ',');
+            if (string.IsNullOrWhiteSpace(CurrentProduct.Name)) { ShowErr("Введите название"); NameTextBox.Focus(); return; }
+            if (string.IsNullOrWhiteSpace(CurrentProduct.Description)) { ShowErr("Введите описание"); DescriptionTextBox.Focus(); return; }
 
-            if (!float.TryParse(input, out var price))
-            {
-                MessageBox.Show("Цена должна быть числом", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                PriceTextBox.Focus();
-                return;
-            }
-            if (price < 0)
-            {
-                MessageBox.Show("Цена не может быть отрицательной", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                PriceTextBox.Focus();
-                return;
-            }
-            if (!int.TryParse(StockTextBox.Text, out var stock))
-            {
-                MessageBox.Show("Количество должно быть целым числом", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                StockTextBox.Focus();
-                return;
-            }
-            if (stock < 0)
-            {
-                MessageBox.Show("Количество не может быть отрицательным", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                StockTextBox.Focus();
-                return;
-            }
-            if (!double.TryParse(RatingTextBox.Text, out var rating))
-            {
-                MessageBox.Show("Рейтинг должен быть числом", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                RatingTextBox.Focus();
-                return;
-            }
-            if (rating < 0 || rating > 5)
-            {
-                MessageBox.Show("Рейтинг должен быть от 0 до 5", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                RatingTextBox.Focus();
-                return;
-            }
-            if (CategoryComboBox.SelectedValue == null)
-            {
-                MessageBox.Show("Выберите категорию", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            if (!float.TryParse(PriceTextBox.Text.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float price) || price < 0)
+            { ShowErr("Цена должна быть неотрицательным числом"); PriceTextBox.Focus(); return; }
 
-            if (BrandComboBox.SelectedValue == null)
-            {
-                MessageBox.Show("Выберите бренд", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            if (!int.TryParse(StockTextBox.Text, out int stock) || stock <= 0)
+            { ShowErr("Количество должно быть неотрицательным целым числом"); StockTextBox.Focus(); return; }
+
+            if (!double.TryParse(RatingTextBox.Text.Replace(',', '.'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double rating) || rating < 0 || rating > 5)
+            { ShowErr("Рейтинг от 0 до 5"); RatingTextBox.Focus(); return; }
+
+            if (CategoryComboBox.SelectedValue == null || BrandComboBox.SelectedValue == null)
+            { ShowErr("Выберите категорию и бренд"); return; }
 
             CurrentProduct.Price = price;
             CurrentProduct.Stock = stock;
@@ -420,70 +353,39 @@ namespace zad15_trpo.Pages
             {
                 if (CurrentProduct.Id == 0)
                 {
-
-                    CurrentProduct.CreatedAt = DateOnly.FromDateTime(DateTime.Now);
-
+                    CurrentProduct.Tags.Clear();
+                    foreach (Tag t in TagsListBox.SelectedItems) CurrentProduct.Tags.Add(t);
                     _db.Products.Add(CurrentProduct);
-                    _db.SaveChanges(); // Сохраняем
-
-                    // Добавляем связи с тегами
-                    foreach (Tag selectedTag in TagsListBox.SelectedItems)
-                    {
-                        _db.Tags.Add(new Tag
-                        {
-                            ProductId = CurrentProduct.Id,
-                            TagId = selectedTag.Id
-                        });
-                    }
-                    _db.SaveChanges();
-
-                    MessageBox.Show("Товар и теги успешно добавлены!", "Готово", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 else
                 {
+                    // Обновляем связи многие-ко-многим
+                    var existingTags = _db.Tags.Where(t => CurrentProduct.Tags.Any(pt => pt.Id == t.Id)).ToList();
+                    foreach (var t in existingTags) CurrentProduct.Tags.Remove(t);
+                    foreach (Tag t in TagsListBox.SelectedItems) CurrentProduct.Tags.Add(t);
                     _db.Products.Update(CurrentProduct);
-
-                    // Удаляем старые связи с тегами
-                    var oldTags = _db.ProductTags.Where(pt => pt.ProductId == CurrentProduct.Id).ToList();
-                    if (oldTags.Any())
-                    {
-                        _db.ProductTags.RemoveRange(oldTags);
-                    }
-
-                    // Добавляем новые связи с тегами
-                    foreach (Tag selectedTag in TagsListBox.SelectedItems)
-                    {
-                        _db.ProductTags.Add(new ProductTag
-                        {
-                            ProductId = CurrentProduct.Id,
-                            TagId = selectedTag.Id
-                        });
-                    }
-
-                    _db.SaveChanges();
-
-                    MessageBox.Show("Товар и теги успешно обновлены!", "Готово", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
-                if (NavigationService.CanGoBack)
-                {
-                    NavigationService.GoBack();
-                }
+
+                _db.SaveChanges();
+                MessageBox.Show("Успешно сохранено!", "Готово", MessageBoxButton.OK, MessageBoxImage.Information);
+                if (NavigationService.CanGoBack) NavigationService.GoBack();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Ошибка при сохранении: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Ошибка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
+        private void ShowErr(string msg)
+        {
+            MessageBox.Show(msg, "Ошибка", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
         private void Back_Click(object sender, RoutedEventArgs e)
         {
-
             NavigationService.GoBack();
-
         }
     }
-}
-<Page x:Class="zad15_trpo.Pages.AttributesPage"
+}<Page x:Class="zad15_trpo.Pages.AttributesPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -500,8 +402,15 @@ namespace zad15_trpo.Pages
             <ColumnDefinition></ColumnDefinition>
             <ColumnDefinition></ColumnDefinition>
         </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="50"/>
+            <RowDefinition/>
+        </Grid.RowDefinitions>
+        <StackPanel Grid.ColumnSpan="3" Grid.Row="0">
+            <TextBlock Text="Добавление атрибутов" HorizontalAlignment="Center" Margin="0,0,0,10" FontSize="24"/>
+        </StackPanel>
         <!-- Бренды -->
-        <Grid Grid.Column="0">
+        <Grid Grid.Column="0" Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -524,7 +433,7 @@ namespace zad15_trpo.Pages
 
         <!-- Категории -->
 
-        <Grid Grid.Column="1">
+        <Grid Grid.Column="1" Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -545,7 +454,7 @@ namespace zad15_trpo.Pages
         </Grid>
 
         <!-- Теги -->
-        <Grid Grid.Column="2">
+        <Grid Grid.Column="2" Grid.Row="1">
             <Grid.RowDefinitions>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
@@ -567,235 +476,135 @@ namespace zad15_trpo.Pages
         </Grid>
     </Grid>
 </Page>
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
 
 using zad15_trpo.Models;
 using zad15_trpo.Service;
 
 namespace zad15_trpo.Pages
 {
-    /// <summary>
-    /// Логика взаимодействия для AttributesPage.xaml
-    /// </summary>
     public partial class AttributesPage : Page
     {
-        private readonly DBService _dbService;
-        private List<Brand> _brandsList;
-        private List<Category> _categoriesList;
-        private List<Tag> _tagsList;
+        private readonly DBService _dbService = DBService.Instance;
+        private List<Brand> _brandsList = new();
+        private List<Category> _categoriesList = new();
+        private List<Tag> _tagsList = new();
+
         public AttributesPage()
         {
             InitializeComponent();
-            _dbService = DBService.Instance;
             LoadData();
         }
+
         private void LoadData()
         {
-            // Загрузка Брендов
             _brandsList = _dbService.Context.Brands.ToList();
             dgBrands.ItemsSource = _brandsList;
 
-            // Загрузка Категорий
             _categoriesList = _dbService.Context.Categories.ToList();
             dgCategories.ItemsSource = _categoriesList;
 
-            // Загрузка Тегов
             _tagsList = _dbService.Context.Tags.ToList();
             dgTags.ItemsSource = _tagsList;
         }
-        private void dgBrands_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (dgBrands.SelectedItem is Brand selected)
-            {
-                txtBrandName.Text = selected.Name;
-            }
-            else
-            {
-                txtBrandName.Text = string.Empty;
-            }
-        }
 
+        private void dgBrands_SelectionChanged(object sender, SelectionChangedEventArgs e) => txtBrandName.Text = (dgBrands.SelectedItem as Brand)?.Name ?? "";
         private void btnBrandAdd_Click(object sender, RoutedEventArgs e)
         {
-            try
-            {
-                if (string.IsNullOrWhiteSpace(txtBrandName.Text))
-                {
-                    MessageBox.Show("Введите название бренда");
-                    return;
-                }
-
-                var newBrand = new Brand { Name = txtBrandName.Text };
-                _dbService.Context.Brands.Add(newBrand);
-                _dbService.Context.SaveChanges();
-
-                _brandsList.Add(newBrand);
-                dgBrands.Items.Refresh();
-                txtBrandName.Clear();
-                MessageBox.Show("Бренд добавлен");
-            }
-            catch (Microsoft.EntityFrameworkCore.DbUpdateException ex)
-            {
-                // Выводим сообщение из внутреннего исключения
-                string errorMessage = ex.InnerException?.Message ?? ex.Message;
-                MessageBox.Show($"Ошибка при сохранении: {errorMessage}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-            catch (Exception ex)
-            {
-                // Ловим любые другие непредвиденные ошибки
-                MessageBox.Show($"Произошла непредвиденная ошибка: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+            if (string.IsNullOrWhiteSpace(txtBrandName.Text)) return;
+            _dbService.Context.Brands.Add(new Brand { Name = txtBrandName.Text.Trim() });
+            _dbService.Context.SaveChanges();
+            LoadData(); txtBrandName.Clear();
+            MessageBox.Show("Бренд добавлен");
         }
-
         private void btnBrandUpdate_Click(object sender, RoutedEventArgs e)
         {
-            if (dgBrands.SelectedItem is not Brand selected)
-            {
-                MessageBox.Show("Выберите бренд для редактирования");
-                return;
-            }
-
-            if (string.IsNullOrWhiteSpace(txtBrandName.Text))
-            {
-                MessageBox.Show("Название не может быть пустым");
-                return;
-            }
-
-            selected.Name = txtBrandName.Text;
+            if (dgBrands.SelectedItem is not Brand sel) { MessageBox.Show("Выберите бренд"); return; }
+            if (string.IsNullOrWhiteSpace(txtBrandName.Text)) return;
+            sel.Name = txtBrandName.Text.Trim();
             _dbService.Context.SaveChanges();
-
-            dgBrands.Items.Refresh();
+            LoadData();
             MessageBox.Show("Бренд обновлен");
         }
-
         private void btnBrandDelete_Click(object sender, RoutedEventArgs e)
         {
-            if (dgBrands.SelectedItem is not Brand selected)
+            if (dgBrands.SelectedItem is not Brand sel) return;
+            if (MessageBox.Show($"Удалить '{sel.Name}'?", "Подтверждение", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
-                MessageBox.Show("Выберите бренд для удаления");
-                return;
-            }
-
-            var result = MessageBox.Show($"Удалить бренд '{selected.Name}'?", "Подтверждение", MessageBoxButton.YesNo);
-            if (result == MessageBoxResult.Yes)
-            {
-                _dbService.Context.Brands.Remove(selected);
+                _dbService.Context.Brands.Remove(sel);
                 _dbService.Context.SaveChanges();
-
-                _brandsList.Remove(selected);
-                dgBrands.Items.Refresh();
-                txtBrandName.Clear();
+                LoadData(); txtBrandName.Clear();
             }
         }
-        private void dgCategories_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (dgCategories.SelectedItem is Category selected)
-                txtCategoryName.Text = selected.Name;
-            else
-                txtCategoryName.Text = string.Empty;
-        }
 
+        private void dgCategories_SelectionChanged(object sender, SelectionChangedEventArgs e) => txtCategoryName.Text = (dgCategories.SelectedItem as Category)?.Name ?? "";
         private void btnCatAdd_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(txtCategoryName.Text)) { MessageBox.Show("Введите название"); return; }
-
-            var newItem = new Category { Name = txtCategoryName.Text };
-            _dbService.Context.Categories.Add(newItem);
+            if (string.IsNullOrWhiteSpace(txtCategoryName.Text)) return;
+            _dbService.Context.Categories.Add(new Category { Name = txtCategoryName.Text.Trim() });
             _dbService.Context.SaveChanges();
-
-            _categoriesList.Add(newItem);
-            dgCategories.Items.Refresh();
-            txtCategoryName.Clear();
+            LoadData(); txtCategoryName.Clear();
+            MessageBox.Show("Категория добавлена");
         }
-
         private void btnCatUpdate_Click(object sender, RoutedEventArgs e)
         {
-            if (dgCategories.SelectedItem is not Category selected) { MessageBox.Show("Выберите категорию"); return; }
-            if (string.IsNullOrWhiteSpace(txtCategoryName.Text)) { MessageBox.Show("Название не может быть пустым"); return; }
-
-            selected.Name = txtCategoryName.Text;
+            if (dgCategories.SelectedItem is not Category sel) { MessageBox.Show("Выберите категорию"); return; }
+            if (string.IsNullOrWhiteSpace(txtCategoryName.Text)) return;
+            sel.Name = txtCategoryName.Text.Trim();
             _dbService.Context.SaveChanges();
-            dgCategories.Items.Refresh();
+            LoadData();
+            MessageBox.Show("Категория обновлена");
         }
-
         private void btnCatDelete_Click(object sender, RoutedEventArgs e)
         {
-            if (dgCategories.SelectedItem is not Category selected) { MessageBox.Show("Выберите категорию"); return; }
-
-            if (MessageBox.Show($"Удалить '{selected.Name}'?", "Подтверждение", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            if (dgCategories.SelectedItem is not Category sel) return;
+            if (MessageBox.Show($"Удалить '{sel.Name}'?", "Подтверждение", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
-                _dbService.Context.Categories.Remove(selected);
+                _dbService.Context.Categories.Remove(sel);
                 _dbService.Context.SaveChanges();
-                _categoriesList.Remove(selected);
-                dgCategories.Items.Refresh();
-                txtCategoryName.Clear();
+                LoadData(); txtCategoryName.Clear();
             }
         }
+
+        // === ТЕГИ ===
         private void dgTags_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (dgTags.SelectedItem is Tag selected)
-                txtTagName.Text = selected.Name;
-            else
-                txtTagName.Text = string.Empty;
+            txtTagName.Text = (dgTags.SelectedItem as Tag)?.Name ?? "";
         }
-
         private void btnTagAdd_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(txtTagName.Text)) { MessageBox.Show("Введите название"); return; }
-
-            var newItem = new Tag { Name = txtTagName.Text };
-            _dbService.Context.Tags.Add(newItem);
+            if (string.IsNullOrWhiteSpace(txtTagName.Text)) return;
+            _dbService.Context.Tags.Add(new Tag { Name = txtTagName.Text.Trim() });
             _dbService.Context.SaveChanges();
-
-            _tagsList.Add(newItem);
-            dgTags.Items.Refresh();
-            txtTagName.Clear();
+            LoadData(); txtTagName.Clear();
+            MessageBox.Show("Тег добавлен");
         }
-
         private void btnTagUpdate_Click(object sender, RoutedEventArgs e)
         {
-            if (dgTags.SelectedItem is not Tag selected) { MessageBox.Show("Выберите тег"); return; }
-            if (string.IsNullOrWhiteSpace(txtTagName.Text)) { MessageBox.Show("Название не может быть пустым"); return; }
-
-            selected.Name = txtTagName.Text;
+            if (dgTags.SelectedItem is not Tag sel) { MessageBox.Show("Выберите тег"); return; }
+            if (string.IsNullOrWhiteSpace(txtTagName.Text)) return;
+            sel.Name = txtTagName.Text.Trim();
             _dbService.Context.SaveChanges();
-            dgTags.Items.Refresh();
+            LoadData();
+            MessageBox.Show("Тег обновлен");
         }
-
         private void btnTagDelete_Click(object sender, RoutedEventArgs e)
         {
-            if (dgTags.SelectedItem is not Tag selected) { MessageBox.Show("Выберите тег"); return; }
-
-            if (MessageBox.Show($"Удалить '{selected.Name}'?", "Подтверждение", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            if (dgTags.SelectedItem is not Tag sel) return;
+            if (MessageBox.Show($"Удалить '{sel.Name}'?", "Подтверждение", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
             {
-                _dbService.Context.Tags.Remove(selected);
+                _dbService.Context.Tags.Remove(sel);
                 _dbService.Context.SaveChanges();
-                _tagsList.Remove(selected);
-                dgTags.Items.Refresh();
-                txtTagName.Clear();
+                LoadData(); txtTagName.Clear();
             }
         }
 
-        private void Button_Click(object sender, RoutedEventArgs e)
-        {
-            NavigationService.GoBack();
-        }
+        private void Button_Click(object sender, RoutedEventArgs e) => NavigationService.GoBack();
     }
-}
-<Page x:Class="zad15_trpo.Pages.EnterPage"
+}<Page x:Class="zad15_trpo.Pages.EnterPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
@@ -881,11 +690,10 @@ namespace zad15_trpo.Pages
       xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
       xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
       xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
-      xmlns:local="clr-namespace:zad15_trpo.Pages"
       mc:Ignorable="d" 
       DataContext="{Binding RelativeSource={RelativeSource Self}}"
       d:DesignHeight="575" d:DesignWidth="800"
-      Title="MainPage">
+      Title="Главная">
 
     <Grid Margin="5">
         <Grid.ColumnDefinitions>
@@ -893,240 +701,264 @@ namespace zad15_trpo.Pages
             <ColumnDefinition/>
         </Grid.ColumnDefinitions>
         <Grid.RowDefinitions>
+            <RowDefinition Height="50"/>
             <RowDefinition Height="70"/>
             <RowDefinition/>
             <RowDefinition Height="55"/>
         </Grid.RowDefinitions>
-        <StackPanel Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="2">
-            <Label>Поиск</Label>
-            <TextBox Text="{Binding searchQuery, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Введите текст для поиска" TextChanged="TextBox_TextChanged"/>
+        <StackPanel Grid.ColumnSpan="2" Grid.Row="0">
+            <TextBlock Text="Список электроники" HorizontalAlignment="Center" Margin="0,0,0,10" FontSize="24"/>
         </StackPanel>
-        <StackPanel Grid.Row="1" Grid.Column="0">
+        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2">
+            <Label>Поиск</Label>
+            <TextBox Text="{Binding searchQuery, UpdateSourceTrigger=PropertyChanged}" 
+                     materialDesign:HintAssist.Hint="Введите текст для поиска" 
+                     TextChanged="TextBox_TextChanged"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,10,0">
             <Label FontSize="16">Сортировка</Label>
             <ComboBox SelectionChanged="ComboBox_SelectionChanged">
-                <ComboBox.Items>
-                    <ComboBoxItem Tag="Name">Наименование</ComboBoxItem>
-                    <ComboBoxItem Tag="PriceUp">Цена по возрастанию</ComboBoxItem>
-                    <ComboBoxItem Tag="Pricedown">Цена по убыванию</ComboBoxItem>
-                    <ComboBoxItem Tag="StockUp">Количество по возрастанию</ComboBoxItem>
-                    <ComboBoxItem Tag="StockDown">Количество по убыванию</ComboBoxItem>
-                </ComboBox.Items>
+                <ComboBoxItem Content="Наименование" Tag="Name"/>
+                <ComboBoxItem Content="Цена по возрастанию" Tag="PriceUp"/>
+                <ComboBoxItem Content="Цена по убыванию" Tag="PriceDown"/>
+                <ComboBoxItem Content="Количество по возрастанию" Tag="StockUp"/>
+                <ComboBoxItem Content="Количество по убыванию" Tag="StockDown"/>
             </ComboBox>
-            <Label>Фильтры</Label>
-            <StackPanel>
-                <Label FontSize="16">Фильтр по цене</Label>
-                <Label>от</Label>
-                <TextBox Text="{Binding filterPriceFrom, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Введите цену" TextChanged="TextBox_TextChanged"/>
-                <Label>до</Label>
-                <TextBox Text="{Binding filterPriceTo, UpdateSourceTrigger=PropertyChanged}" materialDesign:HintAssist.Hint="Введите цену" TextChanged="TextBox_TextChanged"/>
-            </StackPanel>
-            <StackPanel Margin="0,10,0,0">
-                <Label FontSize="16">Фильтр по бренду</Label>
-                <ComboBox x:Name="BrandFilterComboBox" SelectionChanged="BrandFilter" DisplayMemberPath="Name">
-                    <ComboBox.Items>
-                        <ComboBoxItem Content="Все бренды" Tag="0"/>
-                    </ComboBox.Items>
-                </ComboBox>
-            </StackPanel>
-            <StackPanel Margin="0,10,0,0">
-                <Label FontSize="16">Фильтр по категории</Label>
-                <ComboBox x:Name="CategoryFilterComboBox" SelectionChanged="CategoryFilter" DisplayMemberPath="Name">
-                    <ComboBox.Items>
-                        <ComboBoxItem Content="Все категории" Tag="0"/>
-                    </ComboBox.Items>
-                </ComboBox>
-            </StackPanel>
-            <Button Click="Button_Click" Margin="5">Сбросить</Button>
+
+            <Label FontSize="16" Margin="0,10,0,0">Фильтры</Label>
+
+            <Label>Цена от</Label>
+            <TextBox Text="{Binding filterPriceFrom, UpdateSourceTrigger=PropertyChanged}" 
+                     materialDesign:HintAssist.Hint="от" TextChanged="TextBox_TextChanged"/>
+            <Label>Цена до</Label>
+            <TextBox Text="{Binding filterPriceTo, UpdateSourceTrigger=PropertyChanged}" 
+                     materialDesign:HintAssist.Hint="до" TextChanged="TextBox_TextChanged"/>
+
+            <Label FontSize="16" Margin="0,10,0,0">Бренд</Label>
+            <ComboBox x:Name="BrandFilterComboBox" SelectionChanged="BrandFilter" DisplayMemberPath="Name">
+                <ComboBoxItem Content="Все бренды" Tag="0"/>
+            </ComboBox>
+
+            <Label FontSize="16" Margin="0,10,0,0">Категория</Label>
+            <ComboBox x:Name="CategoryFilterComboBox" SelectionChanged="CategoryFilter" DisplayMemberPath="Name">
+                <ComboBoxItem Content="Все категории" Tag="0"/>
+            </ComboBox>
+
+            <Button Content="Сбросить" Click="Button_Click" Margin="0,10,0,0"/>
         </StackPanel>
-        <materialDesign:ColorZone Grid.Row="1" Grid.Column="1" Mode="SecondaryMid" >
-            <ListView Grid.Row="1"
-                  Grid.Column="1"
-                  ItemsSource="{Binding service.Products}"
-                  HorizontalContentAlignment="Stretch"
-                  Margin="10"
-                  Name="ProductsList">
+
+        <!-- Список товаров -->
+        <materialDesign:ColorZone Grid.Row="2" Grid.Column="1" Mode="SecondaryMid">
+            <ListView ItemsSource="{Binding service.Products}"
+              HorizontalContentAlignment="Stretch"
+              Margin="10"
+              Name="ProductsList"
+              ScrollViewer.VerticalScrollBarVisibility="Auto">
                 <ListView.ItemTemplate>
                     <DataTemplate>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition/>
-                                <RowDefinition/>
-                                <RowDefinition/>
-                                <RowDefinition/>
-                                <RowDefinition/>
-                            </Grid.RowDefinitions>
-                            <TextBlock Grid.Row="0" Text="{Binding Name}"/>
-                            <TextBlock Grid.Row="0" HorizontalAlignment="Right">
-                            <Run Text="Цена: "/>
-                            <Run Text="{Binding Price}"/>
-                            </TextBlock>
+                        <Border BorderThickness="2" Padding="8" CornerRadius="4">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="Transparent"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Stock}" Value="0">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="1">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="2">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="3">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="4">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="5">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="6">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="7">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="8">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding Stock}" Value="9">
+                                            <Setter Property="BorderBrush" Value="#ffd129"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="1">
+                                <!-- Название и цена -->
+                                <TextBlock Grid.Row="0" Text="{Binding Name}" FontWeight="Bold" FontSize="14"/>
+                                <TextBlock Grid.Row="0" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Center">
+                            <Run Text="Цена: "/>
+                            <Run Text="{Binding Price, StringFormat={}{0:F2} руб.}"/>
+                                </TextBlock>
+
+                                <!-- Рейтинг -->
+                                <TextBlock Grid.Row="1">
                             <Run Text="⭐ "/>
                             <Run Text="{Binding Rating}"/>
-                            </TextBlock>
-                            <TextBlock Grid.Row="2">
+                                </TextBlock>
+
+                                <!-- Категория и бренд -->
+                                <TextBlock Grid.Row="2">
                             <Run Text="Категория: "/>
                             <Run Text="{Binding Category.Name}"/>
-                            </TextBlock>
-                            <TextBlock Grid.Row="3" Text="{Binding Description}"/>
-                            <TextBlock Grid.Row="3" HorizontalAlignment="Right">
+                            <Run Text=" | Бренд: "/>
+                            <Run Text="{Binding Brand.Name}"/>
+                                </TextBlock>
+
+                                <!-- Описание и остаток -->
+                                <TextBlock Grid.Row="3" Text="{Binding Description}" TextWrapping="Wrap" Margin="0,2,0,2"/>
+                                <TextBlock Grid.Row="3" Grid.Column="1" HorizontalAlignment="Right" VerticalAlignment="Top">
                             <Run Text="Остаток: "/>
                             <Run Text="{Binding Stock}"/>
-                            </TextBlock>
-                            <ItemsControl Grid.Row="4" ItemsSource="{Binding Tags}">
-                                <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate>
-                                        <StackPanel Orientation="Horizontal"/>
-                                    </ItemsPanelTemplate>
-                                </ItemsControl.ItemsPanel>
+                                </TextBlock>
 
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock>
-                                        <Run Text=" #"/>
-                                        <Run Text="{Binding Name}"/>
-                                        </TextBlock>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
-                        </Grid>
+                                <!-- Теги -->
+                                <ItemsControl Grid.Row="4" Grid.ColumnSpan="2" ItemsSource="{Binding Tags}" Margin="0,4,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="#"/>
+                                                <TextBlock Text="{Binding Name}" Foreground="White" FontSize="11"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </Border>
                     </DataTemplate>
                 </ListView.ItemTemplate>
             </ListView>
         </materialDesign:ColorZone>
-        <WrapPanel Grid.Row="2" Grid.ColumnSpan="2">
-            <TextBlock/>
-            <Button x:Name="Add" Click="Add_Click" Margin="10" Visibility="Hidden">Добавить товар</Button>
-            <Button x:Name="Delete" Click="Delete_Click" Margin="10" Visibility="Hidden">Удалить товар</Button>
-            <Button x:Name="Edit" Click="Edit_Click" Margin="10" Visibility="Hidden" Cursor="Hand">Категории/Бренды/Теги/</Button>
-            <TextBlock/>
+
+        <WrapPanel Grid.Row="3" Grid.ColumnSpan="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+            <TextBlock Text="{Binding service.Products.Count, StringFormat='{}Всего записей: {0}'}"/>
+            <TextBlock Text="{Binding Items.Count, ElementName=ProductsList, StringFormat='{} Показано: {0}'}"/>
+            <Button x:Name="Add" Content="Добавить товар" Click="Add_Click" Margin="10,0,5,0" Visibility="Hidden"/>
+            <Button x:Name="Delete" Content="Удалить товар" Click="Delete_Click" Margin="0,0,5,0" Visibility="Hidden"/>
+            <Button x:Name="Edit" Content="Категории/Бренды/Теги" Click="Edit_Click" Margin="0,0,5,0" Visibility="Hidden"/>
         </WrapPanel>
     </Grid>
-</Page>
-using System;
+</Page>using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
+using System.ComponentModel;
+using System.Globalization;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-using zad15_trpo.Service;
 
 using zad15_trpo.Models;
-using System.ComponentModel;
+using zad15_trpo.Service;
 
 namespace zad15_trpo.Pages
 {
-    /// <summary>
-    /// Логика взаимодействия для MainPage.xaml
-    /// </summary>
     public partial class MainPage : Page
     {
-        public Ratovsky15Context db = DBService.Instance.Context;
-        public int? selectedBrandId { get; set; } = null;
-        public int? selectedCategoryId { get; set; } = null;
+        private readonly Ratovsky15Context _db = DBService.Instance.Context;
         public ProductService service { get; set; } = new();
         public ICollectionView productsView { get; set; }
+
         public string searchQuery { get; set; } = null!;
-        public CategoryService categoryService { get; set; } = new();
-        List<string> categoryNames = new();
-        public BrandService brandService { get; set; } = new();
-        List<string> brandNames = new();
-        public int startSum { get; set; } = 0;
-        public int endSum { get; set; } = 0;
         public string filterPriceFrom { get; set; } = null!;
         public string filterPriceTo { get; set; } = null!;
-        public ObservableCollection<Product> products { get; set; } = new();
 
-        public MainPage(bool manager)
+        public int? selectedBrandId { get; set; } = null;
+        public int? selectedCategoryId { get; set; } = null;
+
+        public MainPage(bool isManager)
         {
-            
             InitializeComponent();
-            if (manager == true)
+            if (isManager)
             {
                 Add.Visibility = Visibility.Visible;
                 Delete.Visibility = Visibility.Visible;
                 Edit.Visibility = Visibility.Visible;
             }
+
+            LoadFilters();
             productsView = CollectionViewSource.GetDefaultView(service.Products);
             productsView.Filter = FilterProducts;
-            LoadFilters();
         }
+
         private void LoadFilters()
         {
-            // Загружаем бренды
-            var brandList = db.Brands.ToList();
-            foreach (var brand in brandList)
-            {
-                BrandFilterComboBox.Items.Add(brand);
-            }
-            // Загружаем категории
-            var categoryList = db.Categories.ToList();
-            foreach (var category in categoryList)
-            {
-                CategoryFilterComboBox.Items.Add(category);
-            }
+            var brands = _db.Brands.OrderBy(b => b.Name).ToList();
+            foreach (var b in brands)
+                BrandFilterComboBox.Items.Add(b);
+
+            var categories = _db.Categories.OrderBy(c => c.Name).ToList();
+            foreach (var c in categories)
+                CategoryFilterComboBox.Items.Add(c);
         }
-        public bool FilterProducts(object obj)
+
+        private bool FilterProducts(object obj)
         {
-            if (obj is not Product)
-                return false;
-            var product = (Product)obj;
-            if (searchQuery != null && !product.Name.Contains(searchQuery,
-            StringComparison.CurrentCultureIgnoreCase))
-                return false;
+            if (obj is not Product p) return false;
 
-            bool isPresentedCategory = false;
-            foreach (string category in categoryNames)
-            {
-                if (product.Category.Name.Contains(category, StringComparison.CurrentCultureIgnoreCase))
-                {
-                    isPresentedCategory = true;
-                    break;
-                }
-            }
-
-            if (!isPresentedCategory && categoryNames.Count > 0)
+            // Поиск по названию
+            if (!string.IsNullOrEmpty(searchQuery) &&
+                !p.Name.Contains(searchQuery, StringComparison.OrdinalIgnoreCase))
                 return false;
 
-            bool isPresentedBrand = false;
-            foreach (string brand in brandNames)
-            {
-                if (product.Brand.Name.Contains(brand, StringComparison.CurrentCultureIgnoreCase))
-                {
-                    isPresentedBrand = true;
-                    break;
-                }
-            }
-
-            if (!isPresentedBrand && brandNames.Count > 0)
+            // Фильтр по бренду
+            if (selectedBrandId.HasValue && selectedBrandId.Value > 0 &&
+                p.BrandId != selectedBrandId.Value)
                 return false;
 
-            if (startSum > 0 && startSum > product.Price)
+            // Фильтр по категории
+            if (selectedCategoryId.HasValue && selectedCategoryId.Value > 0 &&
+                p.CategoryId != selectedCategoryId.Value)
                 return false;
 
-            if (endSum > 0 && endSum < product.Price)
+            // Фильтр по цене
+            if (!string.IsNullOrEmpty(filterPriceFrom) &&
+                float.TryParse(filterPriceFrom.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out float minP) &&
+                p.Price < minP)
+                return false;
+
+            if (!string.IsNullOrEmpty(filterPriceTo) &&
+                float.TryParse(filterPriceTo.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out float maxP) &&
+                p.Price > maxP)
                 return false;
 
             return true;
         }
+
         private void BrandFilter(object sender, SelectionChangedEventArgs e)
         {
             selectedBrandId = (BrandFilterComboBox.SelectedItem as Brand)?.Id ?? 0;
             productsView.Refresh();
         }
+
         private void CategoryFilter(object sender, SelectionChangedEventArgs e)
         {
             selectedCategoryId = (CategoryFilterComboBox.SelectedItem as Category)?.Id ?? 0;
@@ -1141,35 +973,37 @@ namespace zad15_trpo.Pages
         private void Button_Click(object sender, RoutedEventArgs e)
         {
             searchQuery = "";
-
+            filterPriceFrom = "";
+            filterPriceTo = "";
+            selectedBrandId = null;
+            selectedCategoryId = null;
+            BrandFilterComboBox.SelectedIndex = 0;
+            CategoryFilterComboBox.SelectedIndex = 0;
             productsView.Refresh();
         }
+
         private void ComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             productsView.SortDescriptions.Clear();
             var cb = (ComboBox)sender;
-            var selected = (ComboBoxItem)cb.SelectedItem;
-            switch (selected.Tag)
+            if (cb.SelectedItem is not ComboBoxItem selected) return;
+
+            switch (selected.Tag?.ToString())
             {
                 case "Name":
-                    productsView.SortDescriptions.Add(new SortDescription("Name",
-                    ListSortDirection.Ascending));
+                    productsView.SortDescriptions.Add(new SortDescription("Name", ListSortDirection.Ascending));
                     break;
                 case "PriceUp":
-                    productsView.SortDescriptions.Add(new SortDescription("Price",
-                    ListSortDirection.Ascending));
+                    productsView.SortDescriptions.Add(new SortDescription("Price", ListSortDirection.Ascending));
                     break;
                 case "PriceDown":
-                    productsView.SortDescriptions.Add(new SortDescription("Price",
-                    ListSortDirection.Descending));
+                    productsView.SortDescriptions.Add(new SortDescription("Price", ListSortDirection.Descending));
                     break;
                 case "StockUp":
-                    productsView.SortDescriptions.Add(new SortDescription("Stock",
-                    ListSortDirection.Ascending));
+                    productsView.SortDescriptions.Add(new SortDescription("Stock", ListSortDirection.Ascending));
                     break;
                 case "StockDown":
-                    productsView.SortDescriptions.Add(new SortDescription("Stock",
-                    ListSortDirection.Descending));
+                    productsView.SortDescriptions.Add(new SortDescription("Stock", ListSortDirection.Descending));
                     break;
             }
             productsView.Refresh();
@@ -1179,34 +1013,28 @@ namespace zad15_trpo.Pages
         {
             NavigationService.Navigate(new AddProductPage());
         }
+            
 
         private void Delete_Click(object sender, RoutedEventArgs e)
         {
-            if (ProductsList.SelectedItem is not Product selectedProduct)
+            if (ProductsList.SelectedItem is not Product sel)
             {
-                MessageBox.Show("Выберите товар для удаления", "Внимание",
+                MessageBox.Show("Выберите товар", "Внимание",
                     MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            if (MessageBox.Show($"Удалить товар \"{selectedProduct.Name}\"?",
-                "Подтверждение",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question) == MessageBoxResult.No)
-            {
+
+            if (MessageBox.Show($"Удалить товар \"{sel.Name}\"?", "Подтверждение",
+                    MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.No)
                 return;
-            }
 
             try
             {
-                //Удаляем сам товар
-                DBService.Instance.Context.Products.Remove(selectedProduct);
-                //Сохраняем изменения
-                DBService.Instance.Context.SaveChanges();
-                // Удаляем из списка
-                products.Remove(selectedProduct);
-                // Сбрасываем выделение
-                ProductsList.SelectedItem = null;
-                MessageBox.Show("Товар успешно удален", "Готово",
+                _db.Products.Remove(sel);
+                _db.SaveChanges();
+                service.Products.Remove(sel);
+                productsView.Refresh();
+                MessageBox.Show("Товар удалён", "Готово",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
@@ -1220,81 +1048,7 @@ namespace zad15_trpo.Pages
         {
             NavigationService.Navigate(new AttributesPage());
         }
-    }
-}
-using System;
-using System.Collections.Generic;
-using System.Globalization;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Controls;
-
-namespace zad15_trpo.Validation
-{
-    public class Password : ValidationRule
-    {
-        public override ValidationResult Validate(object value, CultureInfo cultureInfo)
-        {
-
-            var input = value.ToString();
-
-            if (value == null || string.IsNullOrWhiteSpace(input))
-            {
-                return new ValidationResult(false, "Значение не может быть пустым");
-            }
-
-            if (!long.TryParse(input, out long longValue))
-            {
-                return new ValidationResult(false, "Пинкод состоит только из цифр");
-            }
-
-            if (input.Length != 4)
-            {
-                return new ValidationResult(false, "Пинкод состоит из 4 символов");
-            }
-
-            return ValidationResult.ValidResult;
-        }
-    }
-}
-<Window x:Class="zad15_trpo.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:zad15_trpo"
-        mc:Ignorable="d"
-        Title="MainWindow" Height="575" MinHeight="575" MinWidth="800" Width="800">
-    <Grid>
-        <Frame Name="MainFrame" Grid.Row="1" NavigationUIVisibility="Hidden"/>
-    </Grid>
-</Window>
-using Microsoft.EntityFrameworkCore;
-
-using System.Text;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
-using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
-
-namespace zad15_trpo
-{
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
-    public partial class MainWindow : Window
-    {
-        public MainWindow()
-        {
-            InitializeComponent();
-            MainFrame.Navigate(new Pages.EnterPage());
-        }
+            
     }
 }using Microsoft.EntityFrameworkCore;
 
@@ -1565,3 +1319,105 @@ namespace zad15_trpo.Service
         }
     }
 }
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Controls;
+
+namespace zad15_trpo.Validation
+{
+    public class Password : ValidationRule
+    {
+        public override ValidationResult Validate(object value, CultureInfo cultureInfo)
+        {
+
+            var input = value.ToString();
+
+            if (value == null || string.IsNullOrWhiteSpace(input))
+            {
+                return new ValidationResult(false, "Значение не может быть пустым");
+            }
+
+            if (!long.TryParse(input, out long longValue))
+            {
+                return new ValidationResult(false, "Пинкод состоит только из цифр");
+            }
+
+            if (input.Length != 4)
+            {
+                return new ValidationResult(false, "Пинкод состоит из 4 символов");
+            }
+
+            return ValidationResult.ValidResult;
+        }
+    }
+}
+using Microsoft.EntityFrameworkCore;
+
+using System.Text;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Documents;
+using System.Windows.Input;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+using System.Windows.Navigation;
+using System.Windows.Shapes;
+
+namespace zad15_trpo
+{
+    /// <summary>
+    /// Interaction logic for MainWindow.xaml
+    /// </summary>
+    public partial class MainWindow : Window
+    {
+        public MainWindow()
+        {
+            InitializeComponent();
+            MainFrame.Navigate(new Pages.EnterPage());
+        }
+    }
+}<Window x:Class="zad15_trpo.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:zad15_trpo"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="600" MinHeight="600" MinWidth="800" Width="800">
+    <Grid>
+        <Frame Name="MainFrame" Grid.Row="1" NavigationUIVisibility="Hidden"/>
+    </Grid>
+</Window>
+<Application x:Class="zad15_trpo.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:zad15_trpo" 
+             xmlns:materialDesign="http://materialdesigninxaml.net/winfx/xaml/themes"
+             StartupUri="MainWindow.xaml">
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="pack://application:,,,/MaterialDesignThemes.Wpf;component/Themes/MaterialDesign2.Defaults.xaml" />
+                <materialDesign:BundledTheme BaseTheme="Light" PrimaryColor="DeepPurple" SecondaryColor="Lime"/>
+                <ResourceDictionary>
+                    <SolidColorBrush x:Key="MaterialDesign.Brush.Primary" Color="#00C4B4"/>
+                    <SolidColorBrush x:Key="MaterialDesign.Brush.Primary.Foreground" Color="#000"/>
+                    <SolidColorBrush x:Key="MaterialDesign.Brush.Secondary" Color="#00b4c4"/>
+                    <SolidColorBrush x:Key="MaterialDesign.Brush.Secondary.Foreground" Color="#fff"/>
+                    <SolidColorBrush x:Key="MaterialDesign.Brush.Background" Color="#dfeaeb"/>
+                </ResourceDictionary>
+            </ResourceDictionary.MergedDictionaries>
+            <Style TargetType="TextBox" BasedOn="{StaticResource MaterialDesignTextBox}">
+                <Setter Property="AutomationProperties.Name" Value="" />
+            </Style>
+            <Style TargetType="ComboBox" BasedOn="{StaticResource MaterialDesignComboBox}">
+                <Setter Property="AutomationProperties.Name" Value="" />
+            </Style>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>
