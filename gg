@@ -1,0 +1,298 @@
+// zad15.cpp
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <winsock2.h>
+#include <WS2tcpip.h>
+#include <iostream>
+#include <ctime>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+using namespace std;
+
+#define MAX_CLIENTS 256
+#define BUF_SIZE 512
+#define DEFAULT_PORT "27015"
+
+struct Client {
+    SOCKET socket;
+    char name[64];
+    bool connected;
+    ULONGLONG lastMsg;
+};
+
+Client clients[MAX_CLIENTS];
+int clientCount = 0;
+CRITICAL_SECTION cs;
+
+void SendToAll(const char* msg, SOCKET except = INVALID_SOCKET) {
+    EnterCriticalSection(&cs);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i].connected && clients[i].socket != except) {
+            send(clients[i].socket, msg, (int)strlen(msg), 0);
+        }
+    }
+    LeaveCriticalSection(&cs);
+}
+
+DWORD WINAPI ClientHandler(LPVOID param) {
+    SOCKET sock = (SOCKET)param;
+    char buf[BUF_SIZE];
+    char name[64] = "Guest";
+    
+    int res = recv(sock, name, 64, 0);
+    if (res > 0) {
+        name[res] = '\0';
+        // Убираем \n и \r если есть
+        int len = strlen(name);
+        if (len > 0 && name[len-1] == '\n') name[len-1] = '\0';
+        if (len > 1 && name[len-2] == '\r') name[len-2] = '\0';
+    }
+    
+    cout << "[DEBUG] Received name: '" << name << "'" << endl;
+    
+    EnterCriticalSection(&cs);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (!clients[i].connected) {
+            clients[i].socket = sock;
+            strcpy_s(clients[i].name, name);
+            clients[i].connected = true;
+            clients[i].lastMsg = GetTickCount64();
+            clientCount++;
+            break;
+        }
+    }
+    LeaveCriticalSection(&cs);
+    
+    char msg[BUF_SIZE];
+    sprintf_s(msg, "[SERVER]: user \"%s\" has joined\n", name);
+    cout << msg;
+    SendToAll(msg);
+    
+    while (true) {
+        res = recv(sock, buf, BUF_SIZE, 0);
+        if (res <= 0) break;
+        buf[res] = '\0';
+        
+        // Убираем \n и \r
+        int len = strlen(buf);
+        if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+        if (len > 1 && buf[len-2] == '\r') buf[len-2] = '\0';
+        
+        cout << "[" << name << "]: " << buf << endl;
+        
+        if (strcmp(buf, "/users") == 0) {
+            cout << "[DEBUG] /users from " << name << endl;
+            char list[4096] = "[SERVER]: Active users:\n";
+            EnterCriticalSection(&cs);
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i].connected) {
+                    char line[128];
+                    sprintf_s(line, "  - %s\n", clients[i].name);
+                    strcat_s(list, sizeof(list), line);
+                }
+            }
+            LeaveCriticalSection(&cs);
+            send(sock, list, (int)strlen(list), 0);
+        }
+        else if (strcmp(buf, "/exit") == 0) {
+            break;
+        }
+        else {
+            // Проверка на спам
+            EnterCriticalSection(&cs);
+            bool canSend = false;
+            for (int i = 0; i < MAX_CLIENTS; i++) {
+                if (clients[i].socket == sock) {
+                    ULONGLONG now = GetTickCount64();
+                    if (now - clients[i].lastMsg >= 500) {
+                        clients[i].lastMsg = now;
+                        canSend = true;
+                    }
+                    break;
+                }
+            }
+            LeaveCriticalSection(&cs);
+            
+            if (canSend) {
+                sprintf_s(msg, "[%s]: %s\n", name, buf);
+                SendToAll(msg, sock);
+            }
+            else {
+                char warn[] = "[SERVER]: Don't spam!\n";
+                send(sock, warn, (int)strlen(warn), 0);
+            }
+        }
+    }
+    
+    // Отключение клиента
+    EnterCriticalSection(&cs);
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        if (clients[i].socket == sock) {
+            clients[i].connected = false;
+            clientCount--;
+            break;
+        }
+    }
+    LeaveCriticalSection(&cs);
+    
+    sprintf_s(msg, "[SERVER]: user \"%s\" left the chat\n", name);
+    cout << msg;
+    SendToAll(msg);
+    
+    closesocket(sock);
+    return 0;
+}
+
+int main() {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    InitializeCriticalSection(&cs);
+    
+    for (int i = 0; i < MAX_CLIENTS; i++) {
+        clients[i].connected = false;
+    }
+    
+    struct addrinfo hints = {}, *res;
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = AI_PASSIVE;
+    
+    getaddrinfo(NULL, DEFAULT_PORT, &hints, &res);
+    SOCKET listenSock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    bind(listenSock, res->ai_addr, (int)res->ai_addrlen);
+    freeaddrinfo(res);
+    listen(listenSock, SOMAXCONN);
+    
+    cout << "Server started on port " << DEFAULT_PORT << endl;
+    
+    while (true) {
+        SOCKET client = accept(listenSock, NULL, NULL);
+        if (client != INVALID_SOCKET) {
+            cout << "[DEBUG] New client connected" << endl;
+            CreateThread(NULL, 0, ClientHandler, (LPVOID)client, 0, NULL);
+        }
+    }
+    
+    DeleteCriticalSection(&cs);
+    closesocket(listenSock);
+    WSACleanup();
+    return 0;
+}
+// client.cpp
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <winsock2.h>
+#include <WS2tcpip.h>
+#include <iostream>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+using namespace std;
+
+#define BUF_SIZE 512
+
+SOCKET sock = INVALID_SOCKET;
+bool running = true;
+volatile ULONGLONG lastSend = 0;
+
+DWORD WINAPI Receiver(LPVOID) {
+    char buf[BUF_SIZE];
+    while (running) {
+        int res = recv(sock, buf, BUF_SIZE, 0);
+        if (res > 0) {
+            buf[res] = '\0';
+            cout << "\n" << buf << "> " << flush;
+        }
+        else if (res == 0) {
+            cout << "\n[Server closed connection]\n";
+            running = false;
+            break;
+        }
+        else {
+            break;
+        }
+    }
+    return 0;
+}
+
+int main() {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    
+    char ip[64];
+    cout << "Server IP (127.0.0.1): ";
+    cin.getline(ip, 64);
+    if (strlen(ip) == 0) {
+        strcpy_s(ip, "127.0.0.1");
+    }
+    
+    struct addrinfo hints = {}, *res;
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    
+    int iResult = getaddrinfo(ip, "27015", &hints, &res);
+    if (iResult != 0) {
+        cout << "getaddrinfo failed: " << iResult << endl;
+        WSACleanup();
+        return 1;
+    }
+    
+    sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    if (sock == INVALID_SOCKET) {
+        cout << "socket failed" << endl;
+        freeaddrinfo(res);
+        WSACleanup();
+        return 1;
+    }
+    
+    iResult = connect(sock, res->ai_addr, (int)res->ai_addrlen);
+    freeaddrinfo(res);
+    
+    if (iResult == SOCKET_ERROR) {
+        cout << "connect failed: " << WSAGetLastError() << endl;
+        closesocket(sock);
+        WSACleanup();
+        return 1;
+    }
+    
+    char name[64];
+    cout << "Your name: ";
+    cin.getline(name, 64);
+    send(sock, name, (int)strlen(name), 0);
+    
+    CreateThread(NULL, 0, Receiver, NULL, 0, NULL);
+    
+    cout << "Connected! Type /users for list, /exit to quit\n";
+    
+    char buf[BUF_SIZE];
+    
+    while (running) {
+        cout << "> ";
+        cin.getline(buf, BUF_SIZE);
+        
+        if (strlen(buf) == 0) continue;
+        
+        if (strcmp(buf, "/exit") == 0) {
+            send(sock, buf, (int)strlen(buf), 0);
+            running = false;
+            break;
+        }
+        
+        ULONGLONG now = GetTickCount64();
+        if (now - lastSend >= 500) {
+            send(sock, buf, (int)strlen(buf), 0);
+            lastSend = now;
+        }
+        else {
+            cout << "[Anti-spam] Wait a bit...\n";
+        }
+    }
+    
+    shutdown(sock, SD_SEND);
+    closesocket(sock);
+    WSACleanup();
+    return 0;
+}
