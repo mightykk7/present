@@ -1,0 +1,437 @@
+﻿// sp15_voroshilov.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
+//
+
+#include <iostream>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
+#include <stdio.h>
+#include <vector>
+#include <string>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+#define DEFAULT_PORT "27015"
+#define DEFAULT_BUFLEN 512
+
+
+volatile int numOfUser = 1;
+std::vector<SOCKET> sockets;
+std::vector<std::string> users;
+
+void SendToUsers(SOCKET ClientSocket, std::string message) {
+	int iSendResult;
+	for (int i = 0; i < sockets.size(); i++) {
+
+		if (sockets[i] != ClientSocket) {
+			iSendResult = send(sockets[i], message.c_str(), message.length(), 0);
+			if (iSendResult == SOCKET_ERROR) {
+				std::cout << "send failed: " << WSAGetLastError() << std::endl;
+				closesocket(sockets[i]);
+				break;
+			}
+		}
+	}
+}
+
+
+DWORD WINAPI ClientSocketThread(LPVOID lpParam) {
+
+	SOCKET ClientSocket = (SOCKET)lpParam;
+
+	char recvbuf[DEFAULT_BUFLEN];
+	int iResult;
+	int iSendResult;
+	int recvbuflen = DEFAULT_BUFLEN;
+	char nickname[DEFAULT_BUFLEN];
+
+	iResult = recv(ClientSocket, nickname, recvbuflen, 0);
+	if (iResult > 0) {
+
+		nickname[iResult] = '\0';
+
+		users.push_back((std::string)nickname);
+
+		std::cout << "[SERVER] user \"" << nickname << "\" has joined" << std::endl;
+
+
+		std::string message = "[SERVER] user \"" + (std::string)nickname + "\" has joined\n";
+
+		SendToUsers(ClientSocket, message);
+
+		do {
+			iResult = recv(ClientSocket, recvbuf, recvbuflen, 0);
+			if (iResult > 0) {
+
+				recvbuf[iResult] = '\0';
+
+				if ((std::string)recvbuf == "/spam") {
+					std::cout << "[SERVER] \"" << nickname <<"\" spamming" << std::endl;
+				}
+				else std::cout << "[" << nickname << "] " << recvbuf << std::endl;
+				
+				if ((std::string)recvbuf == "/users") {
+
+					for (int i = 0; i < users.size(); i++) {
+
+						message = "[SERVER] " + users[i] + "\n";
+
+						iSendResult = send(ClientSocket, message.c_str(), message.length(), 0);
+						if (iSendResult == SOCKET_ERROR) {
+							std::cout << "send failed: " << WSAGetLastError() << std::endl;
+							closesocket(ClientSocket);
+							break;
+						}
+					}
+				}
+				else if ((std::string)recvbuf != "/exit" && (std::string)recvbuf != "/spam") {
+
+					message = "[" + (std::string)nickname + "] " + recvbuf +"\n";
+
+					SendToUsers(ClientSocket, message);
+				}
+
+			}
+
+		} while (iResult > 0);
+
+		iResult = shutdown(ClientSocket, SD_SEND);
+		if (iResult == SOCKET_ERROR) {
+			std::cout << "[SERVER] shutdown for " << nickname << " failed: " << WSAGetLastError() << std::endl;
+		}
+
+		sockets.erase(std::remove(sockets.begin(), sockets.end(), ClientSocket));
+		users.erase(std::remove(users.begin(), users.end(), nickname));
+
+
+		std::cout << "[SERVER] user \"" << nickname << "\" left the chat" << std::endl;
+		message = "[SERVER] user \"" + (std::string)nickname + "\" left the chat\n";
+
+		SendToUsers(ClientSocket, message);
+	}
+
+
+	closesocket(ClientSocket);
+
+	return 0;
+}
+
+
+
+int main()
+{
+	WSADATA wsaData;
+	int iResult;
+
+	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != 0) {
+		std::cout << "WSAStartup failed " << iResult<<std::endl;
+		return 1;
+	}
+
+	struct addrinfo* result = NULL, * ptr = NULL, hints;
+
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+	hints.ai_flags = AI_PASSIVE;
+
+	iResult = getaddrinfo(NULL, DEFAULT_PORT, &hints, &result);
+	if (iResult != 0) {
+		std::cout << "getaddrinfo failed " << iResult << std::endl;
+		WSACleanup();
+		return 1;
+	}
+
+	SOCKET ListenSocket = INVALID_SOCKET;
+
+	ListenSocket = socket(result->ai_family, result->ai_socktype, result->ai_protocol);
+
+	if (ListenSocket == INVALID_SOCKET) {
+		std::cout << "Error at socket(): " << WSAGetLastError()<<std::endl;
+		freeaddrinfo(result);
+		WSACleanup();
+		return 1;
+	}
+
+	iResult = bind(ListenSocket, result->ai_addr, (int)result->ai_addrlen);
+	if (iResult == SOCKET_ERROR) {
+		std::cout << "bind failed with error: " << WSAGetLastError() << std::endl;
+		freeaddrinfo(result);
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	if (listen(ListenSocket, SOMAXCONN) == SOCKET_ERROR) {
+		std::cout << "Listen failed with error: " << WSAGetLastError() << std::endl;
+		closesocket(ListenSocket);
+		WSACleanup();
+		return 1;
+	}
+
+	std::vector<HANDLE*> hThreads;
+
+	while (true) {
+		SOCKET ClientSocket;
+		//!!!!
+		//Обратите внимание, что этот базовый пример очень прост и не использует несколько потоков. В примере также прослушивается и принимается только одно подключение.
+		//!!!!
+		ClientSocket = accept(ListenSocket, NULL, NULL);
+		if (ClientSocket == INVALID_SOCKET) {
+			std::cout << "accept failed: " << WSAGetLastError() << std::endl;
+			closesocket(ListenSocket);
+			WSACleanup();
+			return 1;
+		}
+
+		HANDLE hThread;
+		DWORD IDThread;
+
+		hThread = CreateThread(NULL, NULL, ClientSocketThread, (LPVOID)ClientSocket, NULL, &IDThread);
+		if (hThread == NULL)
+			return GetLastError();
+
+		hThreads.push_back(&hThread);
+		sockets.push_back(ClientSocket);
+	}
+
+	WSACleanup();
+
+	closesocket(ListenSocket);
+
+	for (int i = 0; i < hThreads.size(); i++) {
+		CloseHandle(hThreads[i]);
+	}
+
+	return 0;
+}
+
+// Запуск программы: CTRL+F5 или меню "Отладка" > "Запуск без отладки"
+// Отладка программы: F5 или меню "Отладка" > "Запустить отладку"
+
+// Советы по началу работы 
+//   1. В окне обозревателя решений можно добавлять файлы и управлять ими.
+//   2. В окне Team Explorer можно подключиться к системе управления версиями.
+//   3. В окне "Выходные данные" можно просматривать выходные данные сборки и другие сообщения.
+//   4. В окне "Список ошибок" можно просматривать ошибки.
+//   5. Последовательно выберите пункты меню "Проект" > "Добавить новый элемент", чтобы создать файлы кода, или "Проект" > "Добавить существующий элемент", чтобы добавить в проект существующие файлы кода.
+//   6. Чтобы снова открыть этот проект позже, выберите пункты меню "Файл" > "Открыть" > "Проект" и выберите SLN-файл.
+﻿// sp15_voroshilov_client.cpp : Этот файл содержит функцию "main". Здесь начинается и заканчивается выполнение программы.
+//
+
+
+#include <iostream>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <iphlpapi.h>
+#include <stdio.h>
+#include <vector>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+#define DEFAULT_PORT "27015"
+#define DEFAULT_BUFLEN 512
+
+CRITICAL_SECTION cs;
+
+DWORD WINAPI RecvThread(LPVOID lpParam) {
+	
+	SOCKET ConnectSocket = (SOCKET)lpParam;
+
+	int iResult;
+	char recvbuf[DEFAULT_BUFLEN];
+	int recvbuflen = DEFAULT_BUFLEN;
+
+	while (true) {
+		iResult = recv(ConnectSocket, recvbuf, recvbuflen, 0);
+		EnterCriticalSection(&cs);
+		if (iResult > 0) {
+			recvbuf[iResult] = '\0';
+			std::cout << "\r" << recvbuf << "> ";
+		}
+		else if (iResult == 0) {
+			std::cout << "[SERVER] Connection closed" << std::endl;
+			LeaveCriticalSection(&cs);
+			break;
+		}
+		else {
+			std::cout << "[SERVER] recv failed: " << WSAGetLastError() << std::endl;
+			LeaveCriticalSection(&cs);
+			break;
+		}
+		LeaveCriticalSection(&cs);
+	}
+	return 0;
+}
+
+
+int InitializeWinSock(WSADATA *wsaData, int iResult, SOCKET *ConnectSocket) {
+	iResult = WSAStartup(MAKEWORD(2, 2), wsaData);
+	if (iResult != 0) {
+		std::cout << "WSAStartup failed " << iResult << std::endl;
+		return 1;
+	}
+
+	struct addrinfo* result = NULL,
+		* ptr = NULL,
+		hints;
+	ZeroMemory(&hints, sizeof(hints));
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_protocol = IPPROTO_TCP;
+
+
+	char ipaddress[256];
+	std::cout << "give me ip: ";
+	std::cin >> ipaddress;
+	std::cin.ignore();
+
+	iResult = getaddrinfo(ipaddress, DEFAULT_PORT, &hints, &result);
+	if (iResult != 0) {
+		std::cout << "getaddrinfo failed: " << iResult << std::endl;
+		WSACleanup();
+		return 1;
+	}
+
+	*ConnectSocket = INVALID_SOCKET;
+
+	ptr = result;
+	*ConnectSocket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
+
+	if (*ConnectSocket == INVALID_SOCKET) {
+		std::cout << "Error at socket(): " << WSAGetLastError() << std::endl;
+		freeaddrinfo(result);
+		WSACleanup();
+		return 1;
+	}
+
+	iResult = connect(*ConnectSocket, ptr->ai_addr, (int)ptr->ai_addrlen);
+	if (iResult == SOCKET_ERROR) {
+		closesocket(*ConnectSocket);
+		*ConnectSocket = INVALID_SOCKET;
+	}
+
+	freeaddrinfo(result);
+
+	if (*ConnectSocket == INVALID_SOCKET) {
+		std::cout << "Unable to connect to server!" << std::endl;
+		WSACleanup();
+		return 1;
+	}
+
+	return 0;
+}
+
+
+int main()
+{
+	WSADATA wsaData;
+	int iResult = 0;
+	SOCKET ConnectSocket;
+	
+	InitializeCriticalSection(&cs);
+
+	int res = InitializeWinSock(&wsaData, iResult, &ConnectSocket);
+	if (res != 0) return 1;
+
+	char nickname[256];
+	std::cout << "Enter your nickname: ";
+	std::cin >> nickname;
+	std::cin.ignore();
+	iResult = 0;
+
+	iResult = send(ConnectSocket, nickname, (int)strlen(nickname), 0);
+	if (iResult == SOCKET_ERROR) {
+		std::cout << "send failed :" << WSAGetLastError() << std::endl;
+		closesocket(ConnectSocket);
+		return 1;
+	}
+
+	HANDLE hThread;
+	DWORD IDThread;
+
+	hThread = CreateThread(NULL, NULL, RecvThread, (LPVOID)ConnectSocket, NULL, &IDThread);
+	if (hThread == NULL)
+		return GetLastError();
+
+	int tick = 0;
+
+	while (true) {
+
+		char sendbuf[256];
+		std::cout << "> ";
+		std::cin.getline(sendbuf, 256);
+		
+		if (sendbuf[0] == '/') {
+			if (strcmp(sendbuf, "/exit") != 0 && strcmp(sendbuf, "/users") != 0) {
+				std::cout << "unknown command" << std::endl;
+				continue;
+			}
+		}
+
+		bool isSpamming = false;
+		int temp = GetTickCount64();
+		if ((temp - tick) < 200) {
+			std::cout << "Dont spam!" << std::endl;
+			isSpamming = true;
+			strcpy_s(sendbuf, "/spam");
+		}
+		tick = temp;
+
+		iResult = 0;
+
+		iResult = send(ConnectSocket, sendbuf, (int)strlen(sendbuf), 0);
+		if (iResult == SOCKET_ERROR) {
+			std::cout << "send failed :" << WSAGetLastError() << std::endl;
+			closesocket(ConnectSocket);
+			break;
+		}
+		
+		if (isSpamming) {
+			Sleep(1000);
+			std::cout << "You are free!" << std::endl;
+		}
+		if (strcmp(sendbuf, "/exit") == 0) break;
+	}
+
+
+	iResult = shutdown(ConnectSocket, SD_SEND);
+	if (iResult == SOCKET_ERROR) {
+		std::cout << "shutdown failed: " << WSAGetLastError() << std::endl;
+		closesocket(ConnectSocket);
+		WSACleanup();
+		return 1;
+	}
+	
+	DeleteCriticalSection(&cs);
+
+	CloseHandle(hThread);
+
+	closesocket(ConnectSocket);
+	WSACleanup();
+
+	return 0;
+}
+
+// Запуск программы: CTRL+F5 или меню "Отладка" > "Запуск без отладки"
+// Отладка программы: F5 или меню "Отладка" > "Запустить отладку"
+
+// Советы по началу работы 
+//   1. В окне обозревателя решений можно добавлять файлы и управлять ими.
+//   2. В окне Team Explorer можно подключиться к системе управления версиями.
+//   3. В окне "Выходные данные" можно просматривать выходные данные сборки и другие сообщения.
+//   4. В окне "Список ошибок" можно просматривать ошибки.
+//   5. Последовательно выберите пункты меню "Проект" > "Добавить новый элемент", чтобы создать файлы кода, или "Проект" > "Добавить существующий элемент", чтобы добавить в проект существующие файлы кода.
+//   6. Чтобы снова открыть этот проект позже, выберите пункты меню "Файл" > "Открыть" > "Проект" и выберите SLN-файл.
