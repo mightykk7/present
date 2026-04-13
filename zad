@@ -1,0 +1,225 @@
+// zad15.cpp
+#include <iostream>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdio.h>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+#define DEFAULT_PORT "27015"
+#define DEFAULT_BUFLEN 512
+
+SOCKET clients[256];
+char names[256][64];
+int count = 0;
+
+void SendToUsers(SOCKET sender, char* msg) {
+    for (int i = 0; i < count; i++) {
+        if (clients[i] != sender) {
+            send(clients[i], msg, strlen(msg), 0);
+        }
+    }
+}
+
+DWORD WINAPI ClientThread(LPVOID lpParam) {
+    SOCKET sock = (SOCKET)lpParam;
+    char buf[DEFAULT_BUFLEN];
+    char name[64];
+    char msg[1024];
+    int res;
+    
+    res = recv(sock, name, 64, 0);
+    if (res <= 0) { closesocket(sock); return 0; }
+    name[res] = 0;
+    
+    for (int i = 0; i < count; i++) {
+        if (clients[i] == sock) { strcpy(names[i], name); break; }
+    }
+    
+    printf("[SERVER] user \"%s\" has joined\n", name);
+    sprintf(msg, "[SERVER] user \"%s\" has joined\n", name);
+    SendToUsers(sock, msg);
+    
+    sprintf(msg, "Welcome, %s!\n", name);
+    send(sock, msg, strlen(msg), 0);
+    
+    while (1) {
+        res = recv(sock, buf, DEFAULT_BUFLEN, 0);
+        if (res <= 0) break;
+        buf[res] = 0;
+        
+        printf("[%s] %s\n", name, buf);
+        
+        if (strcmp(buf, "/users") == 0) {
+            char list[2048] = "[SERVER] Active users:\n";
+            for (int i = 0; i < count; i++) {
+                char line[128];
+                sprintf(line, " - %s\n", names[i]);
+                strcat(list, line);
+            }
+            send(sock, list, strlen(list), 0);
+        }
+        else if (strcmp(buf, "/exit") == 0) {
+            break;
+        }
+        else {
+            sprintf(msg, "[%s] %s\n", name, buf);
+            SendToUsers(sock, msg);
+        }
+    }
+    
+    printf("[SERVER] user \"%s\" left the chat\n", name);
+    sprintf(msg, "[SERVER] user \"%s\" left the chat\n", name);
+    SendToUsers(sock, msg);
+    
+    int idx = -1;
+    for (int i = 0; i < count; i++) {
+        if (clients[i] == sock) { idx = i; break; }
+    }
+    if (idx != -1) {
+        for (int i = idx; i < count - 1; i++) {
+            clients[i] = clients[i + 1];
+            strcpy(names[i], names[i + 1]);
+        }
+        count--;
+    }
+    closesocket(sock);
+    return 0;
+}
+
+int main() {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    
+    struct addrinfo *res = NULL, hints = { 0 };
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    hints.ai_flags = AI_PASSIVE;
+    getaddrinfo(NULL, DEFAULT_PORT, &hints, &res);
+    
+    SOCKET listenSock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    bind(listenSock, res->ai_addr, (int)res->ai_addrlen);
+    freeaddrinfo(res);
+    listen(listenSock, SOMAXCONN);
+    
+    printf("[SERVER] Started on port %s\n", DEFAULT_PORT);
+    
+    while (1) {
+        SOCKET client = accept(listenSock, NULL, NULL);
+        if (client != INVALID_SOCKET && count < 256) {
+            clients[count++] = client;
+            HANDLE h; DWORD tid;
+            h = CreateThread(NULL, 0, ClientThread, (LPVOID)client, 0, &tid);
+            if (h) CloseHandle(h);
+        }
+    }
+    
+    closesocket(listenSock);
+    WSACleanup();
+    return 0;
+}
+// client.cpp
+#include <iostream>
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <stdio.h>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+#define DEFAULT_PORT "27015"
+#define DEFAULT_BUFLEN 512
+
+CRITICAL_SECTION cs;
+
+DWORD WINAPI RecvThread(LPVOID lpParam) {
+    SOCKET sock = (SOCKET)lpParam;
+    char buf[DEFAULT_BUFLEN];
+    int res;
+    while (1) {
+        res = recv(sock, buf, DEFAULT_BUFLEN, 0);
+        EnterCriticalSection(&cs);
+        if (res > 0) {
+            buf[res] = 0;
+            printf("\r%s> ", buf);
+        }
+        else if (res == 0) {
+            printf("\r[SERVER] Connection closed\n");
+            LeaveCriticalSection(&cs);
+            break;
+        }
+        else {
+            printf("\rrecv failed\n");
+            LeaveCriticalSection(&cs);
+            break;
+        }
+        LeaveCriticalSection(&cs);
+    }
+    return 0;
+}
+
+int main() {
+    WSADATA wsa;
+    WSAStartup(MAKEWORD(2, 2), &wsa);
+    InitializeCriticalSection(&cs);
+    
+    char ip[256];
+    printf("Server IP (127.0.0.1): ");
+    fgets(ip, 256, stdin);
+    ip[strcspn(ip, "\n")] = 0;
+    
+    struct addrinfo *res = NULL, hints = { 0 };
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    getaddrinfo(ip, DEFAULT_PORT, &hints, &res);
+    
+    SOCKET sock = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+    connect(sock, res->ai_addr, (int)res->ai_addrlen);
+    freeaddrinfo(res);
+    
+    char name[64];
+    printf("Nickname: ");
+    fgets(name, 64, stdin);
+    name[strcspn(name, "\n")] = 0;
+    send(sock, name, strlen(name), 0);
+    
+    HANDLE h; DWORD tid;
+    h = CreateThread(NULL, 0, RecvThread, (LPVOID)sock, 0, &tid);
+    
+    printf("Commands: /users, /exit\n");
+    
+    char buf[256];
+    while (1) {
+        printf("> ");
+        fgets(buf, 256, stdin);
+        buf[strcspn(buf, "\n")] = 0;
+        
+        if (buf[0] == '/') {
+            if (strcmp(buf, "/exit") != 0 && strcmp(buf, "/users") != 0) {
+                printf("Unknown command\n");
+                continue;
+            }
+        }
+        
+        send(sock, buf, strlen(buf), 0);
+        if (strcmp(buf, "/exit") == 0) break;
+    }
+    
+    shutdown(sock, SD_SEND);
+    DeleteCriticalSection(&cs);
+    CloseHandle(h);
+    closesocket(sock);
+    WSACleanup();
+    return 0;
+}
